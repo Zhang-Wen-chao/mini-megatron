@@ -1,0 +1,145 @@
+# 用 Nsight Systems 找出小模型训练里被忽视的 45%：优化器才是隐藏瓶颈
+
+> 工具实践 | mini-megatron 性能调优记录
+> 环境：4×NVIDIA L20 (48GB, GDDR6 @ 864GB/s) · NGC PyTorch 26.01 · 单卡 125M GPT · BF16
+
+## 背景
+
+最近在给面试做准备（方向：AI 框架/分布式训练性能优化），把个人项目 mini-megatron（800 行纯 PyTorch 实现的 Megatron 并行策略）拿出来做一次正经的性能剖析。基线数据（单卡 125M，BF16）：
+
+- **吞吐 45,371 tok/s，MFU 31.75%**
+- 对比 Megatron-Core 同配置只有 11.48% MFU，已经快 2.4 倍
+- 但对照 NVIDIA 参考（H100 47%），31.75% 仍有大量提升空间
+
+任务：用 NVIDIA 官方工具链（Nsight Systems / Nsight Compute）找出这 68% 的算力浪费在哪，并落地优化。
+
+## 工具链：为什么选 Nsight
+
+| 工具 | 定位 | 我用它干什么 |
+|---|---|---|
+| **nsys** (Nsight Systems) | 系统级时间线，看"时间花在哪" | kernel 时长分类、调用次数、API 开销 |
+| **ncu** (Nsight Compute) | kernel 级剖析，看"某个 kernel 为什么慢" | 内存带宽 vs 计算利用率、瓶颈定位 |
+
+> 注意：ncu 需要 GPU 性能计数器权限（宿主机驱动 `RmProfilingAdminOnly=1` 时容器内无权限）。如果遇到 `ERR_NVGPUCTRPERM`，方案：宿主机 root 跑 ncu，或由管理员设置 `NVreg_RmProfilingAdminOnly=0`（需重载驱动）。本文 nsys 数据已足够支撑分析，ncu 作为深入手段演示。
+
+### 采集命令（可复现）
+
+```bash
+# 1. 系统级时间线：抓 kernel + CUDA API + 显存事件
+nsys profile -o mini_base --trace=cuda,nvtx,osrt \
+  --cuda-memory-usage=true \
+  torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 \
+  --num-steps 40 --warmup-steps 10 --micro-batch-size 4 --amp
+
+# 2. 生成统计报告
+nsys stats -r cuda_gpu_kern_sum --format csv mini_base.nsys-rep
+
+# 3. kernel 级剖析（有权限时）
+ncu --kernel-name regex:multi_tensor --launch-count 8 \
+  --metrics gpu__time_duration.sum,dram__throughput.avg.pct_of_peak_sustained_elapsed,sm__throughput.avg.pct_of_peak_sustained_elapsed \
+  torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 --num-steps 5 --warmup-steps 0 --micro-batch-size 4 --amp
+```
+
+采集了 40 步（10 warmup + 30 测量），约 30,953 次 kernel 调用。用 nsys 导出的 SQLite 按 kernel 名分类聚合：
+
+```python
+# 用 nsys 生成的 sqlite 做 kernel 分类统计（核心代码）
+rows = cur.execute("""SELECT K.demangledName, COUNT(*), SUM(K.end-K.start)
+                      FROM CUPTI_ACTIVITY_KIND_KERNEL K
+                      GROUP BY K.demangledName ORDER BY 3 DESC""").fetchall()
+# demangledName 是 StringIds 外键，需 JOIN 查询
+```
+
+## 发现 1（核心）：优化器占了近一半的 GPU 时间
+
+40 步训练 kernel 时间分布：
+
+| 类别 | 调用次数 | 总时间 | 占比 |
+|---|---|---|---|
+| **AdamW 优化器 (multi_tensor)** | 3,200 | 1.000s | **45.2%** |
+| matmul (GEMM) | 9,750 | 0.814s | 36.8% |
+| dtype copy (autocast 类型转换) | 8,700 | 0.188s | 8.5% |
+| softmax (交叉熵) | 100 | 0.081s | 3.7% |
+| layernorm | 3,750 | 0.041s | 1.9% |
+| 其他 (gelu/fill/embedding…) | — | ~0.09s | ~4% |
+
+**反直觉的事实：125M 小模型上，优化器消耗的 GPU 时间比所有 GEMM 加起来还多。**
+
+### 根因分析
+
+PyTorch 默认 AdamW 的 `step()` 是**逐个算子执行的**，每步大约 9 个 multi-tensor kernel：
+
+1. `param.mul_(1 - lr*wd)` —— weight decay
+2. `exp_avg.mul_(β1)` / `exp_avg.add_(grad, α=1-β1)` —— 一阶动量
+3. `exp_avg_sq.mul_(β2)` / `exp_avg_sq.addcmul_(grad, grad, ...)` —— 二阶动量
+4. 偏差修正（bias correction）的 `mul_` / `div_`
+5. `exp_avg_sq.sqrt().add_(eps)` —— denom
+6. `param.addcdiv_(exp_avg, denom, value=-lr)` —— 参数更新
+
+**每个 kernel 都要把全部参数全量读写一遍。** 125M 参数 × 3 个状态张量（param + exp_avg + exp_avg_sq）× 4B = 1.5GB，一次读写 = 3GB 流量。
+
+关键点：**优化器是纯内存带宽算子，而 L20 的 GDDR6 带宽只有 864 GB/s**（H100 HBM3 的 1/4）。
+
+理论计算：每步 9 个 kernel × 3GB 流量 = 27GB @ 864GB/s ≈ **31ms/step**——实测每步约 25ms 的优化器时间，与理论吻合（kernel 之间无重叠时）。
+
+L20 的算力（110 TFLOPS）足以让 GEMM 跑在 36.8%，而优化器的内存流量把它拖成了"带宽游戏"。**这是典型的 compute-light / memory-heavy 场景，小模型 + 高带宽比算力比值低的内存型 GPU 最容易踩的坑。**
+
+### 另一个隐藏开销：autocast 的逐 GEMM cast
+
+8.7% 的 `bfloat16_copy_kernel`：BF16 autocast 下，`nn.Linear` 的 **FP32 权重在每次 GEMM 前都要被 cast 成 BF16**。12 层 × 6 个 Linear × 前向+反向 ≈ 150 次/步的小型 copy kernel。这个在后续用 `torch.compile` 或权重预转换可消除。
+
+## 优化：一行代码，fused AdamW
+
+PyTorch 自带 AdamW 的 fused 版本（`fused=True`），把所有更新逻辑合并成**单个 CUDA kernel**，每步从 ~9 次全量扫描变成 1 次：
+
+```python
+optimizer = AdamW(model.parameters(), lr=cfg.LEARNING_RATE,
+                  weight_decay=cfg.WEIGHT_DECAY, fused=True)
+```
+
+### 结果（同配置复测 50 步）
+
+| 指标 | 优化前 | 优化后 | 提升 |
+|---|---|---|---|
+| 吞吐 | 45,371 tok/s | **60,625 tok/s** | **+33.6%** |
+| MFU | 31.75% | **42.42%** | **+10.7pp** |
+| 优化器 kernel 时间 | 1.000s (45.2%) | 0.432s (26.3%) | **-57%** |
+| 总 kernel 时间 | 2.210s | 1.643s | **-25.7%** |
+| 最终 loss（30 步后） | 9.8480 | 9.8483 | 一致 ✅ |
+
+优化后的分布：matmul 升到 49.5%（不再是优化器主导），优化器降到 26.3%。
+
+**为什么 fused 省这么多**：合并成一个 kernel 后，参数只读一次、写一次；而且 fused 内核在寄存器/共享内存里完成中间计算，避免了 8 次独立的 DRAM 往返。对 125M 模型，9 次全量扫描 vs 1 次，内存流量直接降到 1/9 量级。
+
+### 正确性验证
+
+fused 与 unfused 的 loss 曲线完全一致（9.8480 vs 9.8483，random 数据训练）。fused kernel 的实现就是逐参数执行相同的 AdamW 数学公式，唯一的区别是减少 kernel 启动和 DRAM 往返。
+
+## 剩余瓶颈与下一步
+
+优化后剩余分布：
+
+| 类别 | 占比 | 优化方向 |
+|---|---|---|
+| matmul | 49.5% | 小 GEMM（B=4 导致 K 维度小）→ 增大 batch、CUDA graphs 隐藏 launch |
+| dtype copy | 11.5% | 权重预转换（bf16 副本）、torch.compile 自动融合 |
+| AdamW fused | 26.3% | 已经是单 kernel，可尝试 ZeRO-1/多卡分摊 |
+| softmax (CE) | 4.9% | 1.38ms/次的 log_softmax，可换 vocab-parallel + 融合 kernel |
+
+另外 L20 单卡的天花板受 GDDR6 带宽限制（864GB/s），理论峰值 MFU 也就是 50% 上下；多卡 PCIe 无 NVLink 是硬伤。真正要追更高 MFU 需要 H100 级别带宽或更大模型。
+
+## 复盘：面试怎么讲这个故事
+
+1. **发现问题**：不是"试了 torch.compile 提速 20%"这种玄学，而是先用 Nsight Systems 量化出 45.2% 的时间在优化器上（数据驱动）
+2. **解释根因**：内存带宽模型——优化器是 memory-bound，算了下理论流量和实测吻合
+3. **动手优化**：fused AdamW 单 kernel 化，-57% 优化器时间，MFU 31.75% → 42.42%
+4. **验证**：loss 一致性确认没有改变训练语义
+
+这个故事同时覆盖了三类面试点：**性能分析工具链（nsys/ncu）、硬件理解（内存带宽 vs 算力）、框架内核知识（AdamW 实现、autocast 机制）**——正好对应目标岗位 JD 里"熟悉深度学习框架优化/问题定位相关工具链""熟悉硬件机制"的要求。
+
+## 附录：数据复现
+
+- 仓库：github.com/Zhang-Wen-chao/mini-megatron（--fused 参数已合入 main.py）
+- 环境：NGC PyTorch 26.01 容器，CUDA 13.1，4×L20
+- 基准命令：`torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp --fused`
+- 本次会话记录了完整的 nsys 原始报告（mini_base / mini_fused .nsys-rep）

@@ -74,6 +74,7 @@ def main():
     parser.add_argument("--pp", type=int, default=1)
     parser.add_argument("--log-interval", type=int, default=10)
     parser.add_argument("--amp", action="store_true", help="Enable BF16 mixed precision (autocast)")
+    parser.add_argument("--fused", action="store_true", help="Use fused AdamW (single kernel per step)")
     parser.add_argument("--data-file", type=str, default=None, help="Path to pre-generated .pt data (overrides random data)")
     args = parser.parse_args()
 
@@ -134,7 +135,7 @@ def main():
             all_params += list(ln_f.parameters())
         if lm_head is not None:
             all_params += list(lm_head.parameters())
-        optimizer = AdamW(all_params, lr=cfg.LEARNING_RATE, weight_decay=cfg.WEIGHT_DECAY)
+        optimizer = AdamW(all_params, lr=cfg.LEARNING_RATE, weight_decay=cfg.WEIGHT_DECAY, fused=args.fused)
         scheduler = torch.optim.lr_scheduler.LambdaLR(
             optimizer, make_lr_lambda(args.warmup_steps, args.num_steps)
         )
@@ -164,7 +165,7 @@ def main():
         lm_head = nn.Linear(HS, V, bias=False).to(device)
         model = GPT(embedding, decoder, ln_f, lm_head, loss_fn).to(device)
 
-        optimizer = AdamW(model.parameters(), lr=cfg.LEARNING_RATE, weight_decay=cfg.WEIGHT_DECAY)
+        optimizer = AdamW(model.parameters(), lr=cfg.LEARNING_RATE, weight_decay=cfg.WEIGHT_DECAY, fused=args.fused)
         scheduler = torch.optim.lr_scheduler.LambdaLR(
             optimizer, make_lr_lambda(args.warmup_steps, args.num_steps)
         )

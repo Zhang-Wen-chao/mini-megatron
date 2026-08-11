@@ -27,6 +27,9 @@ torchrun --nproc_per_node=1 main.py --tp 1 --pp 1
 # Single GPU, BF16 mixed precision (faster, less memory)
 torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 --amp
 
+# Single GPU, BF16 + fused AdamW (single kernel optimizer step)
+torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 --amp --fused
+
 # TP=2 (2 GPUs)
 torchrun --nproc_per_node=2 main.py --tp 2 --pp 1
 
@@ -51,8 +54,13 @@ Default (125M-parameter GPT model):
 | Warmup steps | 10 |
 | Max steps | 100 |
 
-Override via CLI: `--num-steps`, `--micro-batch-size`, `--warmup-steps`, `--log-interval`, `--amp`.
+Override via CLI: `--num-steps`, `--micro-batch-size`, `--warmup-steps`, `--log-interval`, `--amp`, `--fused`.
 Edit `config.py` for model architecture changes.
+
+`--fused` uses PyTorch's fused AdamW kernel, which collapses the optimizer step
+into a single kernel launch (vs ~9 per-step full-parameter scans by default). On
+a 125M model this cuts optimizer GPU time by ~57% and raises MFU from 31.75% to
+42.42% (TP=1, BF16). Loss curves are identical to the unfused path.
 
 ## Requirements
 
@@ -145,6 +153,22 @@ TP=2 PP=2 |  31,699 tok/s |  5.62% MFU |  32,191 tok/s |  5.70% MFU
 
 > AMP gives **1.1-1.5x speedup** on compute-bound configs (TP=1, TP=2). PP=2 sees
 > little benefit because communication overhead dominates over compute.
+
+### Fused AdamW optimization (2026-08-11, 50 steps, same conditions)
+
+```
+                BF16 (--amp)                 BF16 + fused (--amp --fused)   gain
+TP=1 PP=1 |  45,371 tok/s | 31.75% MFU |  60,625 tok/s | 42.42% MFU |  +33.6% tok/s
+TP=2 PP=1 |  21,126 tok/s |  7.39% MFU |  22,775 tok/s |  7.96% MFU |   +7.8%
+TP=2 PP=2 |  23,229 tok/s |  5.70% MFU |  23,530 tok/s |  5.77% MFU |   +1.3%
+```
+
+> `--fused` collapses the AdamW step into a single kernel. On a single GPU it
+> cuts optimizer GPU time by ~57% (Nsight Systems: AdamW was 45.2% of kernel
+> time before, 26.3% after) and raises MFU from 31.75% to 42.42%.
+> The gain shrinks with TP/PP because each rank owns fewer parameters, so the
+> optimizer's memory-bandwidth cost no longer dominates.
+> Full story: `docs/nsight-adamw-optimizer-bottleneck.md`.
 
 ### vs Megatron-Core (30 steps, like-for-like)
 
