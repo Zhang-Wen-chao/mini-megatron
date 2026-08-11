@@ -54,14 +54,23 @@ Default (125M-parameter GPT model):
 | Warmup steps | 10 |
 | Max steps | 100 |
 
-Override via CLI: `--num-steps`, `--micro-batch-size`, `--warmup-steps`, `--log-interval`, `--amp`, `--fused`.
+Override via CLI: `--num-steps`, `--micro-batch-size`, `--warmup-steps`, `--log-interval`, `--amp`, `--fused`, `--compile`.
 Edit `config.py` for model architecture changes.
 
 `--fused` uses PyTorch's fused AdamW kernel, which collapses the optimizer step
-into a single kernel launch (vs ~9 per-step full-parameter scans by default). On
-a 125M model this cuts optimizer GPU time by ~57% and raises MFU from 36.2% to
-42.4% (TP=1, BF16, alternating A/B re-runs). Loss curves match the unfused path
-(max diff ~1e-4 on fixed data, 200 steps).
+into a single kernel launch (vs ~9 per-step full-parameter scans by default).
+`--compile` wraps the model in `torch.compile`, which fuses the autocast weight
+casts into the GEMMs and reduces kernel launches. Together (TP=1, BF16,
+alternating A/B re-runs):
+
+| config | tok/s | MFU |
+|---|---|---|
+| `--amp` | 51,800 | 36.2% |
+| `--amp --fused` | 60,661 | 42.4% |
+| `--amp --compile` | 56,590 | 39.6% |
+| `--amp --fused --compile` | **67,335** | **47.2%** |
+
+Loss curves match the unfused path (fixed-data max diff ~1e-4, 200 steps).
 
 ## Requirements
 

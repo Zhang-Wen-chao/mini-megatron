@@ -75,6 +75,7 @@ def main():
     parser.add_argument("--log-interval", type=int, default=10)
     parser.add_argument("--amp", action="store_true", help="Enable BF16 mixed precision (autocast)")
     parser.add_argument("--fused", action="store_true", help="Use fused AdamW (single kernel per step)")
+    parser.add_argument("--compile", action="store_true", help="Wrap model in torch.compile (fusion + fewer launches)")
     parser.add_argument("--data-file", type=str, default=None, help="Path to pre-generated .pt data (overrides random data)")
     args = parser.parse_args()
 
@@ -164,6 +165,8 @@ def main():
         ln_f = nn.LayerNorm(HS).to(device)
         lm_head = nn.Linear(HS, V, bias=False).to(device)
         model = GPT(embedding, decoder, ln_f, lm_head, loss_fn).to(device)
+        if args.compile:
+            model = torch.compile(model)
 
         optimizer = AdamW(model.parameters(), lr=cfg.LEARNING_RATE, weight_decay=cfg.WEIGHT_DECAY, fused=args.fused)
         scheduler = torch.optim.lr_scheduler.LambdaLR(

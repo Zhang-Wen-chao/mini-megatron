@@ -150,6 +150,24 @@ optimizer = AdamW(model.parameters(), lr=cfg.LEARNING_RATE,
 
 > fused 收益随参数切分减少而消失：每 rank 参数变少后，优化器不再是内存带宽瓶颈。
 
+## 叠加优化：torch.compile（融合 + 减 launch）
+
+fused 之后用 nsys 再看剩余瓶颈：matmul 49.5%、优化器 26.3%、**dtype copy 11.5%（autocast 每 GEMM 重复 cast 权重）**、每步 708 次 kernel 调用（launch 空隙 ~70µs×700）。下一个优化：`torch.compile`（`--compile`），交替 2 轮：
+
+| 配置 | Round 1 | Round 2 | 稳定值 | vs baseline |
+|---|---|---|---|---|
+| amp | 51,746 | 51,853 | 51,800 | — |
+| amp+fused | 60,616 | 60,705 | 60,661 | +17.1% |
+| amp+compile | 56,484 | 56,695 | 56,590 | +9.2% |
+| **amp+fused+compile** | 67,265 | 67,404 | **67,335** | **+30.0%** |
+
+compile 单独 +9.2%，与 fused 叠加后 **MFU 36.2% → 47.2%**。
+
+nsys 验证 compile 的效果来源：
+- kernel 调用 **708 → 600/step**（-15%，launch 减少）
+- **dtype copy 从 11.5% 降到 0**：torch.compile 把 autocast 的逐 GEMM 权重 cast 融合进 GEMM 本身
+- 固定数据 loss 对比（fused+compile vs fused）：0.0317 vs 0.0324，数值等价 ✅
+
 ## 剩余瓶颈与下一步
 
 优化后剩余分布：
