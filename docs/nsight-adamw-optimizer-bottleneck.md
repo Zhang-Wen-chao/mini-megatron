@@ -168,6 +168,17 @@ nsys 验证 compile 的效果来源：
 - **dtype copy 从 11.5% 降到 0**：torch.compile 把 autocast 的逐 GEMM 权重 cast 融合进 GEMM 本身
 - 固定数据 loss 对比（fused+compile vs fused）：0.0317 vs 0.0324，数值等价 ✅
 
+### 公平性核查：Megatron-Core 开 compile 会挂死
+
+给 `eval/run_megatron_baseline.py` 也加了 `--compile` 做对称对比，但**Megatron-Core 编译到第 4 个 kernel 后死锁**（CPU 0%、kernel 数不再增长，两次独立运行分别在 4.5 分钟和 2 小时后确认无进展，torchinductor 产物停在 4 个 .so），而 mini-megatron 几秒编译完。因此"两边都开 compile"的对比无法完成。
+
+这个结果本身是结论的一部分：**mini-megatron 的纯 torch.nn 结构对 torch.compile 友好（秒级编译），Megatron-Core 的复杂自定义算子（FusedLayerNorm、ColumnParallelLinear 等）触发了编译死锁**——轻量实现反而在工具链兼容性上占优。
+
+跨框架对比的口径（如实表述）：
+- 两边都不 compile：mini 快 **2.10x**（unfused）、**2.28x**（都 fused）
+- mini 全开（fused+compile）vs Megatron 默认：约 **2.73x**（67,335 ÷ 24,661）
+- "两边都全开"：**无法完成**，Megatron-Core 开 compile 挂死
+
 ## 剩余瓶颈与下一步
 
 优化后剩余分布：

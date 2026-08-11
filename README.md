@@ -30,6 +30,9 @@ torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 --amp
 # Single GPU, BF16 + fused AdamW (single kernel optimizer step)
 torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 --amp --fused
 
+# Single GPU, BF16 + fused + torch.compile (best: 47.2% MFU)
+torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 --amp --fused --compile
+
 # TP=2 (2 GPUs)
 torchrun --nproc_per_node=2 main.py --tp 2 --pp 1
 
@@ -193,6 +196,11 @@ Same day, alternating rounds, BF16, TP=1 PP=1, both frameworks with and without 
 > (`B × S × steps / elapsed`), measured back-to-back in alternating rounds.
 > mini-megatron stays ~2.1x faster even when Megatron-Core also enables fused
 > AdamW (fused only helps it +8%, because its bottleneck is not the optimizer).
+>
+> Note on `--compile`: mini-megatron compiles in seconds, but Megatron-Core
+> deadlocks during torch.compile (stuck at 4 compiled kernels, CPU 0%, in two
+> independent runs). So "both fully optimized" is not measurable; mini's
+> fused+compile vs Megatron's default is ~2.73x.
 
 ### vs Megatron-Core (2026-07-24, historical)
 

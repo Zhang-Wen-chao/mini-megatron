@@ -114,6 +114,7 @@ def main():
     parser.add_argument("--log-interval", type=int, default=10)
     parser.add_argument("--amp", action="store_true")
     parser.add_argument("--fused", action="store_true", help="Use fused AdamW (single kernel per step)")
+    parser.add_argument("--compile", action="store_true", help="Wrap model in torch.compile")
     parser.add_argument("--data-file", type=str, default=None)
     parser.add_argument("--no-scaled-init", action="store_true", help="Use std=0.02 for output layer (matches input layer init)")
     args = parser.parse_args()
@@ -134,6 +135,8 @@ def main():
 
     model, config = build_model(tp, pp, use_bf16=args.amp, no_scaled_init=args.no_scaled_init)
     model.cuda()
+    if args.compile:
+        model = torch.compile(model)
 
     rank = dist.get_rank()
     torch.manual_seed(42)
