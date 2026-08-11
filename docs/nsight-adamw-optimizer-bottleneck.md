@@ -7,9 +7,9 @@
 
 最近在给面试做准备（方向：AI 框架/分布式训练性能优化），把个人项目 mini-megatron（800 行纯 PyTorch 实现的 Megatron 并行策略）拿出来做一次正经的性能剖析。基线数据（单卡 125M，BF16）：
 
-- **吞吐 45,371 tok/s，MFU 31.75%**
-- 对比 Megatron-Core 同配置只有 11.48% MFU，已经快 2.4 倍
-- 但对照 NVIDIA 参考（H100 47%），31.75% 仍有大量提升空间
+- **吞吐 51,700 tok/s，MFU 36.2%**
+- 对比 Megatron-Core 同配置 11.48% MFU，已经快 1.6-2.4 倍
+- 但对照 NVIDIA 参考（H100 47%），36.2% 仍有提升空间
 
 任务：用 NVIDIA 官方工具链（Nsight Systems / Nsight Compute）找出这 68% 的算力浪费在哪，并落地优化。
 
@@ -97,23 +97,41 @@ optimizer = AdamW(model.parameters(), lr=cfg.LEARNING_RATE,
                   weight_decay=cfg.WEIGHT_DECAY, fused=True)
 ```
 
-### 结果（同配置复测 50 步）
+### 结果（严格交替复测，同 seed 随机数据）
 
-| 指标 | 优化前 | 优化后 | 提升 |
+| 指标 | unfused | fused | 提升 |
 |---|---|---|---|
-| 吞吐 | 45,371 tok/s | **60,625 tok/s** | **+33.6%** |
-| MFU | 31.75% | **42.42%** | **+10.7pp** |
+| 吞吐 | 51,700~51,831 tok/s | **60,606~60,617 tok/s** | **+17.1%** |
+| MFU | 36.2% | **42.4%** | **+6.2pp** |
 | 优化器 kernel 时间 | 1.000s (45.2%) | 0.432s (26.3%) | **-57%** |
 | 总 kernel 时间 | 2.210s | 1.643s | **-25.7%** |
-| 最终 loss（30 步后） | 9.8480 | 9.8483 | 一致 ✅ |
+
+> 数据采集方式：unfused / fused 交替各跑 2 轮（每轮 50 测量步 + 10 warmup），取每轮结果。同 seed（42）随机数据，两路 loss 行为一致。
+> **口径说明**：优化器"45.2%"是占 GPU kernel 总时间的比例；占 wall-clock（kernel 起止跨度）为 38.5%。
+> **为什么不写第一次测的 +33.6%**：首次基线测得 45,371 tok/s，同配置交替复测稳定在 51.7k——首测值偏低（GPU 频率/负载未稳定），提升比例被夸大。以交替复测为准。
 
 优化后的分布：matmul 升到 49.5%（不再是优化器主导），优化器降到 26.3%。
 
 **为什么 fused 省这么多**：合并成一个 kernel 后，参数只读一次、写一次；而且 fused 内核在寄存器/共享内存里完成中间计算，避免了 8 次独立的 DRAM 往返。对 125M 模型，9 次全量扫描 vs 1 次，内存流量直接降到 1/9 量级。
 
-### 正确性验证
+### 正确性验证（固定数据文件，同 seed）
 
-fused 与 unfused 的 loss 曲线完全一致（9.8480 vs 9.8483，random 数据训练）。fused kernel 的实现就是逐参数执行相同的 AdamW 数学公式，唯一的区别是减少 kernel 启动和 DRAM 往返。
+| 步数 | 数据 | Max loss diff | Mean loss diff |
+|---|---|---|---|
+| 50（仅固定数据） | identity_data.pt | **0.000000** | **0.000000** |
+| 200（含随机段） | identity_data.pt | 0.000100 | 0.000010 |
+
+> 使用 `experiments/identity_data.pt`（预生成、加载后不再消耗 RNG），unfused/fused 各跑一遍，逐 step 对比 loss。
+> fused kernel 内部归约顺序与 unfused 略有不同，训练早期（loss 尚未饱和）逐位一致；随步数增加浮点噪声累积到 ~1e-4，属正常数值噪声，不影响收敛。面试表述：**"数值等价，非位级一致"**。
+
+### 多卡验证（交替复测，同条件）
+
+| 配置 | unfused | fused | 提升 |
+|---|---|---|---|
+| TP=2 PP=1 | 26,133~26,708 tok/s | 28,126~29,290 tok/s | **+7.6%** |
+| TP=2 PP=2 | 23,186~23,686 tok/s | 23,261~23,764 tok/s | ~0（噪声内） |
+
+> fused 收益随参数切分减少而消失：每 rank 参数变少后，优化器不再是内存带宽瓶颈。
 
 ## 剩余瓶颈与下一步
 
@@ -132,14 +150,52 @@ fused 与 unfused 的 loss 曲线完全一致（9.8480 vs 9.8483，random 数据
 
 1. **发现问题**：不是"试了 torch.compile 提速 20%"这种玄学，而是先用 Nsight Systems 量化出 45.2% 的时间在优化器上（数据驱动）
 2. **解释根因**：内存带宽模型——优化器是 memory-bound，算了下理论流量和实测吻合
-3. **动手优化**：fused AdamW 单 kernel 化，-57% 优化器时间，MFU 31.75% → 42.42%
-4. **验证**：loss 一致性确认没有改变训练语义
+3. **动手优化**：fused AdamW 单 kernel 化，-57% 优化器时间，MFU 36.2% → 42.4%
+4. **验证**：固定数据 + 同 seed 的 loss 曲线对比，确认没有改变训练语义
 
 这个故事同时覆盖了三类面试点：**性能分析工具链（nsys/ncu）、硬件理解（内存带宽 vs 算力）、框架内核知识（AdamW 实现、autocast 机制）**——正好对应目标岗位 JD 里"熟悉深度学习框架优化/问题定位相关工具链""熟悉硬件机制"的要求。
 
-## 附录：数据复现
+## 附录：测试条件与复现（完整）
 
-- 仓库：github.com/Zhang-Wen-chao/mini-megatron（--fused 参数已合入 main.py）
-- 环境：NGC PyTorch 26.01 容器，CUDA 13.1，4×L20
-- 基准命令：`torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp --fused`
-- 本次会话记录了完整的 nsys 原始报告（mini_base / mini_fused .nsys-rep）
+### 环境
+
+| 项 | 值 |
+|---|---|
+| 硬件 | 4× NVIDIA L20 48GB（Ada cc8.9，GDDR6 864GB/s，PCIe 无 NVLink） |
+| 容器 | NGC PyTorch 26.01（CUDA 13.1，torch 2.10.0a0，NCCL 2.29.2），shm=1G |
+| 模型 | 125M GPT（12 层 / 768 hidden / 12 头 / 512 seq），B=4 |
+| 精度 | BF16（`torch.autocast`），TF32 开启 |
+| 优化器 | AdamW lr=6e-4, wd=0.1, cosine schedule, warmup 10 |
+
+### 复现命令
+
+```bash
+# 1. 吞吐对比（随机数据，同 seed=42，交替跑 2 轮取稳定值）
+# unfused:
+torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 \
+  --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp
+# fused:
+torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 \
+  --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp --fused
+
+# 2. 训练等价性（固定数据文件，同 seed，逐 step 对比 loss）
+python3 experiments/synthetic_data.py experiments/synthetic_data.pt
+python3 experiments/make_identity.py    # 生成 experiments/identity_data.pt
+python3 experiments/compare_convergence.py --compare-fused \
+  --data-file experiments/identity_data.pt --steps 50 --warmup 0
+
+# 3. nsys 剖析（-57% 优化器时间的数据来源）
+nsys profile -o mini_base --trace=cuda \
+  torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 \
+  --num-steps 40 --warmup-steps 10 --micro-batch-size 4 --amp
+nsys profile -o mini_fused --trace=cuda \
+  torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 \
+  --num-steps 40 --warmup-steps 10 --micro-batch-size 4 --amp --fused
+# 然后：nsys stats -r cuda_gpu_kern_sum，或导出 sqlite 按 kernel 名聚合
+```
+
+### 已知的口径与波动
+
+- 提升比例随**总吞吐水平**波动：同 seed 随机数据 51.7k→60.6k（+17.1%）；固定数据文件任务 32.7k→36.1k（+10.5%），绝对收益 ~9k tok/s 相近
+- 多卡测试同样需要交替复测（PCIe 通信下吞吐波动更大，TP=2 PP=2 的 ±2% 为噪声）
+- 数值上 fused 非位级一致：kernel 归约顺序不同，训练后期 loss 差 ~1e-4，属正常噪声

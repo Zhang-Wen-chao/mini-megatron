@@ -10,12 +10,13 @@
 
 | 配置 | BF16 (--amp) | BF16 + fused (--amp --fused) | gain |
 |------|--------------|------------------------------|------|
-| **TP=1 PP=1** | 45,371 tok/s, 31.75% MFU | **60,625 tok/s, 42.42% MFU** | **+33.6%** |
-| **TP=2 PP=1** | 21,126 tok/s, 7.39% MFU | 22,775 tok/s, 7.96% MFU | +7.8% |
-| **TP=2 PP=2** | 23,229 tok/s, 5.70% MFU | 23,530 tok/s, 5.77% MFU | +1.3% |
+| **TP=1 PP=1** | 51,700 tok/s, 36.18% MFU | **60,617 tok/s, 42.42% MFU** | **+17.2%** |
+| **TP=2 PP=1** | 26,133 tok/s, 9.14% MFU | 28,126 tok/s, 9.84% MFU | +7.6% |
+| **TP=2 PP=2** | 23,186 tok/s, 4.21% MFU | 23,261 tok/s, 4.22% MFU | +0.3% |
 
-> `--fused` 把 AdamW 优化器步骤合并为单 kernel（Nsight Systems 测量：优化器 kernel 时间从 45.2% 降到 26.3%）。单卡 125M 时收益最大（优化器是内存带宽瓶颈）；TP/PP 切分后每 rank 参数变少，优化器不再主导，收益趋近于零。
-> 完整分析：`docs/nsight-adamw-optimizer-bottleneck.md`
+> 测量方法：unfused/fused 交替各跑 2 轮（每轮 50 测量步 + 10 warmup，同 seed=42 随机数据），取稳定轮次。`--fused` 把 AdamW 优化器步骤合并为单 kernel（Nsight Systems 测量：优化器 kernel 时间从 45.2% 降到 26.3%，占 wall-clock 从 38.5% 降到 26.3%）。单卡 125M 时收益最大（优化器是内存带宽瓶颈）；TP/PP 切分后每 rank 参数变少，优化器不再主导，收益趋近于零。
+> 训练等价性：固定数据文件 + 同 seed 下 unfused/fused 逐 step loss 对比，50 步 diff=0，200 步 Max diff ~1e-4（非位级一致，浮点归约顺序差异）。
+> 完整测试条件：`docs/nsight-adamw-optimizer-bottleneck.md` 附录
 
 ---
 

@@ -23,13 +23,15 @@ MINI_SCRIPT = os.path.join(ROOT, "main.py")
 BASELINE_SCRIPT = os.path.join(ROOT, "eval", "run_megatron_baseline.py")
 
 
-def run_framework(script, data_file, steps=50, warmup=5, name="unknown"):
+def run_framework(script, data_file, steps=50, warmup=5, name="unknown", fused=False):
     """Run one framework, return list of (step, loss) pairs."""
     cmd = (
         f"torchrun --nproc_per_node=1 {script} "
         f"--tp 1 --pp 1 --num-steps {steps} --warmup-steps {warmup} "
         f"--data-file {data_file}"
     )
+    if fused:
+        cmd += " --fused"
     print(f"\n{'='*60}")
     print(f"Running: {name}")
     print(f"Command: {cmd}")
@@ -74,6 +76,8 @@ def main():
     parser.add_argument("--data-file", default="experiments/synthetic_data.pt")
     parser.add_argument("--steps", type=int, default=100)
     parser.add_argument("--warmup", type=int, default=10)
+    parser.add_argument("--compare-fused", action="store_true",
+                        help="Compare unfused vs fused AdamW on mini-megatron only")
     args = parser.parse_args()
 
     data_file = os.path.join(ROOT, args.data_file) if not os.path.isabs(args.data_file) else args.data_file
@@ -81,6 +85,32 @@ def main():
     if not os.path.exists(data_file):
         print(f"ERROR: data file not found: {data_file}")
         sys.exit(1)
+
+    if args.compare_fused:
+        results = {}
+        results["mini"] = run_framework(
+            MINI_SCRIPT, data_file, args.steps, args.warmup, "mini-megatron (unfused)"
+        )
+        results["mini_fused"] = run_framework(
+            MINI_SCRIPT, data_file, args.steps, args.warmup, "mini-megatron (fused)", fused=True
+        )
+
+        plain_losses, plain_final = results["mini"]
+        fused_losses, fused_final = results["mini_fused"]
+
+        print(f"\n{'='*60}")
+        print("FUSED COMPARISON SUMMARY (same data file, same seed)")
+        print(f"{'='*60}")
+        print(f"{'':>20}  {'unfused':>16}  {'fused':>16}")
+        if plain_losses and fused_losses:
+            print(f"{'First loss':>20}  {plain_losses[0][1]:>16.4f}  {fused_losses[0][1]:>16.4f}")
+            print(f"{'Last loss':>20}  {plain_losses[-1][1]:>16.4f}  {fused_losses[-1][1]:>16.4f}")
+            diffs = [abs(a[1] - b[1]) for a, b in zip(plain_losses, fused_losses)]
+            print(f"{'Max |diff|':>20}  {max(diffs):>16.6f}")
+            print(f"{'Mean |diff|':>20}  {sum(diffs)/len(diffs):>16.6f}")
+        print(f"{'tok/s':>20}  {plain_final.get('throughput'):>16.1f}  {fused_final.get('throughput'):>16.1f}")
+        print(f"{'MFU %':>20}  {plain_final.get('mfu'):>16.2f}  {fused_final.get('mfu'):>16.2f}")
+        return
 
     results = {}
 
