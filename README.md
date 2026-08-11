@@ -171,7 +171,21 @@ TP=2 PP=2 |  23,186 tok/s |  4.21% MFU |  23,261 tok/s |  4.22% MFU |   +0.3%
 > optimizer's memory-bandwidth cost no longer dominates.
 > Full story + complete test conditions: `docs/nsight-adamw-optimizer-bottleneck.md`.
 
-### vs Megatron-Core (30 steps, like-for-like)
+### vs Megatron-Core (2026-08-11, strict A/B, 50 steps, same MFU formula)
+
+Same day, alternating rounds, BF16, TP=1 PP=1, both frameworks with and without `--fused`:
+
+| Config | mini-megatron | Megatron-Core | mini / Megatron |
+|---|---|---|---|
+| unfused | 51,841 tok/s (36.3% MFU) | 24,661 tok/s (17.3% MFU) | **2.10x** |
+| fused | 60,754 tok/s (42.5% MFU) | 26,641 tok/s (18.6% MFU) | **2.28x** |
+
+> Both scripts use the identical MFU formula and throughput definition
+> (`B × S × steps / elapsed`), measured back-to-back in alternating rounds.
+> mini-megatron stays ~2.1x faster even when Megatron-Core also enables fused
+> AdamW (fused only helps it +8%, because its bottleneck is not the optimizer).
+
+### vs Megatron-Core (2026-07-24, historical)
 
 **FP32:**
 
@@ -195,10 +209,11 @@ TP=2 PP=2 |  23,186 tok/s |  4.21% MFU |  23,261 tok/s |  4.22% MFU |   +0.3%
 | MFU | 11.47% | **27.20%** |
 | Memory | 4.26 GB | 3.89 GB |
 
-> mini-megatron is **1.6-2x faster** in FP32 and **2.4x faster** in BF16 than Megatron-Core
-> on the same 125M model. Megatron-Core's Float16Module wrapper adds significant overhead
-> for small models, negating BF16's throughput advantage. mini-megatron's lightweight
-> `torch.autocast` avoids this entirely.
+> Historical numbers (2026-07-24), 30-step comparison table. Absolute values
+> differ from 2026-08-11 runs (different measurement conditions), so only
+> compare within the same table. Note: both absolute throughputs are higher
+> in the 2026-08-11 runs (e.g. Megatron-Core 16.4k -> 24.7k tok/s), likely
+> from environment/version changes.
 
 ### Compare against Megatron-LM
 

@@ -113,6 +113,7 @@ def main():
     parser.add_argument("--warmup-steps", type=int, default=10)
     parser.add_argument("--log-interval", type=int, default=10)
     parser.add_argument("--amp", action="store_true")
+    parser.add_argument("--fused", action="store_true", help="Use fused AdamW (single kernel per step)")
     parser.add_argument("--data-file", type=str, default=None)
     parser.add_argument("--no-scaled-init", action="store_true", help="Use std=0.02 for output layer (matches input layer init)")
     args = parser.parse_args()
@@ -136,7 +137,7 @@ def main():
 
     rank = dist.get_rank()
     torch.manual_seed(42)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=6e-4, weight_decay=0.1, betas=(0.9, 0.999))
+    optimizer = torch.optim.AdamW(model.parameters(), lr=6e-4, weight_decay=0.1, betas=(0.9, 0.999), fused=args.fused)
 
     loss_fn = lambda step: 0.5 * (1.0 + math.cos(math.pi * max(0, step - warmup) / max(1, total_steps - warmup)))
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, loss_fn)

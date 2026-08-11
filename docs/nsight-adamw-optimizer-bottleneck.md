@@ -124,6 +124,23 @@ optimizer = AdamW(model.parameters(), lr=cfg.LEARNING_RATE,
 > 使用 `experiments/identity_data.pt`（预生成、加载后不再消耗 RNG），unfused/fused 各跑一遍，逐 step 对比 loss。
 > fused kernel 内部归约顺序与 unfused 略有不同，训练早期（loss 尚未饱和）逐位一致；随步数增加浮点噪声累积到 ~1e-4，属正常数值噪声，不影响收敛。面试表述：**"数值等价，非位级一致"**。
 
+### vs Megatron-Core：fused 都打开还快吗？（2026-08-11 公平对比）
+
+之前的对比只测了 Megatron-Core 的默认配置。为了公平，给 `eval/run_megatron_baseline.py` 也加了 `--fused`，两个框架各自 unfused/fused 交替 2 轮（同一天、BF16、TP=1、50 步+10 warmup）：
+
+| 配置 | Round 1 | Round 2 | 稳定值 | mini / Megatron |
+|---|---|---|---|---|
+| mini unfused | 51,843 | 51,838 | 51,841 | — |
+| mini fused | 60,797 | 60,710 | **60,754** | — |
+| Megatron-Core unfused | 24,696 | 24,626 | 24,661 | 2.10x |
+| Megatron-Core fused | 26,694 | 26,587 | 26,641 | **2.28x** |
+
+结论：
+- **mini-megatron 快 2.1x 起步，fused 都打开时快 2.28x**；
+- Megatron-Core 开 fused 只 +8%（24.7k→26.6k），因为它的瓶颈不在优化器（Float16Module 包装、层实现开销占主导），fused 治不了它的病；
+- 两个脚本用**完全相同的 MFU 公式和吞吐定义**（`B×S×steps/elapsed`），同日交替测量，对比公平；
+- 注意：Megatron-Core 绝对吞吐比 2026-07-24 记录（16.4k）高了 ~50%，环境/版本变化所致，跨日期不可比，只能比同日相对值。
+
 ### 多卡验证（交替复测，同条件）
 
 | 配置 | unfused | fused | 提升 |
