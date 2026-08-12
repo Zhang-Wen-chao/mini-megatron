@@ -1,0 +1,220 @@
+{
+  "generated": "2026-08-12 01:30:37",
+  "environment": {
+    "gpu": "4x NVIDIA L20 48GB",
+    "container": "NGC PyTorch 26.01",
+    "cuda": "13.1",
+    "torch": "2.10.0a0+nv26.1"
+  },
+  "model": "125M GPT (12L/768H/12A, B=4, S=512)",
+  "precision": "BF16 autocast, TF32 enabled",
+  "optimizer": "AdamW lr=6e-4 wd=0.1, cosine, warmup 10",
+  "method": "alternating A/B rounds, same-day, identical MFU formula",
+  "runs": {
+    "round1": {
+      "mini_amp": {
+        "command": "torchrun --nproc_per_node=1 <repo>/main.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp",
+        "elapsed_s": 8.48,
+        "log": "results/logs/r1_mini_amp.log",
+        "tok_s": 51871,
+        "mfu": 36.3,
+        "peak_mem_gb": 3.88,
+        "final_loss": 9.8482
+      },
+      "mini_fused": {
+        "command": "torchrun --nproc_per_node=1 <repo>/main.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp --fused",
+        "elapsed_s": 8.11,
+        "log": "results/logs/r1_mini_fused.log",
+        "tok_s": 60758,
+        "mfu": 42.51,
+        "peak_mem_gb": 3.88,
+        "final_loss": 9.8481
+      },
+      "mini_compile": {
+        "command": "torchrun --nproc_per_node=1 <repo>/main.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp --compile",
+        "elapsed_s": 15.06,
+        "log": "results/logs/r1_mini_compile.log",
+        "tok_s": 56586,
+        "mfu": 39.6,
+        "peak_mem_gb": 3.38,
+        "final_loss": 9.8481
+      },
+      "mini_fused_compile": {
+        "command": "torchrun --nproc_per_node=1 <repo>/main.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp --fused --compile",
+        "elapsed_s": 14.67,
+        "log": "results/logs/r1_mini_fused_compile.log",
+        "tok_s": 67363,
+        "mfu": 47.14,
+        "peak_mem_gb": 3.38,
+        "final_loss": 9.8484
+      },
+      "megatron_amp": {
+        "command": "torchrun --nproc_per_node=1 <repo>/eval/run_megatron_baseline.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp",
+        "elapsed_s": 13.66,
+        "log": "results/logs/r1_megatron_amp.log",
+        "tok_s": 24625,
+        "mfu": 17.23,
+        "peak_mem_gb": 4.88,
+        "final_loss": 10.9756
+      },
+      "megatron_fused": {
+        "command": "torchrun --nproc_per_node=1 <repo>/eval/run_megatron_baseline.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp --fused",
+        "elapsed_s": 13.15,
+        "log": "results/logs/r1_megatron_fused.log",
+        "tok_s": 26496,
+        "mfu": 18.54,
+        "peak_mem_gb": 4.88,
+        "final_loss": 11.0063
+      }
+    },
+    "round2": {
+      "megatron_fused": {
+        "command": "torchrun --nproc_per_node=1 <repo>/eval/run_megatron_baseline.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp --fused",
+        "elapsed_s": 13.21,
+        "log": "results/logs/r2_megatron_fused.log",
+        "tok_s": 26560,
+        "mfu": 18.59,
+        "peak_mem_gb": 4.88,
+        "final_loss": 11.0119
+      },
+      "megatron_amp": {
+        "command": "torchrun --nproc_per_node=1 <repo>/eval/run_megatron_baseline.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp",
+        "elapsed_s": 13.66,
+        "log": "results/logs/r2_megatron_amp.log",
+        "tok_s": 24518,
+        "mfu": 17.16,
+        "peak_mem_gb": 4.88,
+        "final_loss": 10.9607
+      },
+      "mini_fused_compile": {
+        "command": "torchrun --nproc_per_node=1 <repo>/main.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp --fused --compile",
+        "elapsed_s": 14.69,
+        "log": "results/logs/r2_mini_fused_compile.log",
+        "tok_s": 67301,
+        "mfu": 47.09,
+        "peak_mem_gb": 3.38,
+        "final_loss": 9.8483
+      },
+      "mini_compile": {
+        "command": "torchrun --nproc_per_node=1 <repo>/main.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp --compile",
+        "elapsed_s": 15.09,
+        "log": "results/logs/r2_mini_compile.log",
+        "tok_s": 56361,
+        "mfu": 39.44,
+        "peak_mem_gb": 3.38,
+        "final_loss": 9.8483
+      },
+      "mini_fused": {
+        "command": "torchrun --nproc_per_node=1 <repo>/main.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp --fused",
+        "elapsed_s": 8.1,
+        "log": "results/logs/r2_mini_fused.log",
+        "tok_s": 60718,
+        "mfu": 42.49,
+        "peak_mem_gb": 3.88,
+        "final_loss": 9.8482
+      },
+      "mini_amp": {
+        "command": "torchrun --nproc_per_node=1 <repo>/main.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp",
+        "elapsed_s": 8.46,
+        "log": "results/logs/r2_mini_amp.log",
+        "tok_s": 51794,
+        "mfu": 36.24,
+        "peak_mem_gb": 3.88,
+        "final_loss": 9.8479
+      }
+    },
+    "multigpu": {
+      "tp2_amp": {
+        "command": "torchrun --nproc_per_node=2 <repo>/main.py --tp 2 --pp 1 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp",
+        "elapsed_s": 10.61,
+        "log": "results/logs/tp2_mini_amp.log",
+        "tok_s": 26877,
+        "mfu": 9.4,
+        "peak_mem_gb": 3.12,
+        "final_loss": 9.9697
+      },
+      "tp2_fused": {
+        "command": "torchrun --nproc_per_node=2 <repo>/main.py --tp 2 --pp 1 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp --fused",
+        "elapsed_s": 10.31,
+        "log": "results/logs/tp2_mini_fused.log",
+        "tok_s": 28862,
+        "mfu": 10.1,
+        "peak_mem_gb": 3.12,
+        "final_loss": 9.9699
+      },
+      "tp2pp2_amp": {
+        "command": "torchrun --nproc_per_node=4 <repo>/main.py --tp 2 --pp 2 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp",
+        "elapsed_s": 9.8,
+        "log": "results/logs/tp2pp2_mini_amp.log",
+        "tok_s": 23945,
+        "mfu": 4.2,
+        "peak_mem_gb": 2.17,
+        "final_loss": 10.998
+      },
+      "tp2pp2_fused": {
+        "command": "torchrun --nproc_per_node=4 <repo>/main.py --tp 2 --pp 2 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp --fused",
+        "elapsed_s": 9.82,
+        "log": "results/logs/tp2pp2_mini_fused.log",
+        "tok_s": 24098,
+        "mfu": 4.22,
+        "peak_mem_gb": 2.17,
+        "final_loss": 10.998
+      }
+    },
+    "fixed_data_loss": {
+      "eq_amp": {
+        "command": "torchrun --nproc_per_node=1 <repo>/main.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 0 --micro-batch-size 4 --amp --data-file <repo>/experiments/identity_data.pt",
+        "log": "results/logs/eq_amp.log",
+        "elapsed_s": 1786498432.0,
+        "final_loss": 0.0317
+      },
+      "eq_fused": {
+        "command": "torchrun --nproc_per_node=1 <repo>/main.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 0 --micro-batch-size 4 --amp --data-file <repo>/experiments/identity_data.pt --fused",
+        "log": "results/logs/eq_fused.log",
+        "elapsed_s": 1786498440.0,
+        "final_loss": 0.0317
+      },
+      "eq_fused_compile": {
+        "command": "torchrun --nproc_per_node=1 <repo>/main.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 0 --micro-batch-size 4 --amp --data-file <repo>/experiments/identity_data.pt --fused --compile",
+        "log": "results/logs/eq_fused_compile.log",
+        "elapsed_s": 1786498454.0,
+        "final_loss": 0.0317
+      }
+    }
+  },
+  "summary": {
+    "mini_amp": {
+      "round1_tok_s": 51871,
+      "round2_tok_s": 51794,
+      "mean_tok_s": 51832
+    },
+    "mini_fused": {
+      "round1_tok_s": 60758,
+      "round2_tok_s": 60718,
+      "mean_tok_s": 60738
+    },
+    "mini_compile": {
+      "round1_tok_s": 56586,
+      "round2_tok_s": 56361,
+      "mean_tok_s": 56473
+    },
+    "mini_fused_compile": {
+      "round1_tok_s": 67363,
+      "round2_tok_s": 67301,
+      "mean_tok_s": 67332
+    },
+    "megatron_amp": {
+      "round1_tok_s": 24625,
+      "round2_tok_s": 24518,
+      "mean_tok_s": 24571
+    },
+    "megatron_fused": {
+      "round1_tok_s": 26496,
+      "round2_tok_s": 26560,
+      "mean_tok_s": 26528
+    },
+    "mini_best_vs_megatron_default": 2.74,
+    "mini_amp_vs_megatron_amp": 2.11,
+    "mini_fused_vs_megatron_fused": 2.29
+  }
+}

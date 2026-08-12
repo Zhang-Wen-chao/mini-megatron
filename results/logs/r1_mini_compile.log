@@ -1,0 +1,26 @@
+CMD: torchrun --nproc_per_node=1 <repo>/main.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp --compile
+
+step   10 | loss 10.4760
+step   20 | loss 10.1460
+step   30 | loss 9.9309
+step   40 | loss 9.8617
+step   50 | loss 9.8481
+
+============================================================
+Mini-Megatron Results (TP=1, PP=1, AMP=BF16)
+============================================================
+Model:           768hid 12lay 12head
+Micro batch:     4  |  Seq len: 512  |  Steps: 50
+------------------------------------------------------------
+Throughput:      56,586 tok/s
+Peak memory:     3.38 GB/GPU
+MFU:             39.60%
+Final loss:      9.8481
+============================================================
+
+
+
+STDERR:
+/usr/local/lib/python3.12/dist-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+  return func(*args, **kwargs)
+[rank0]:[W812 01:31:06.141407262 ProcessGroupNCCL.cpp:5163] Guessing device ID based on global rank. This can cause a hang if rank to GPU mapping is heterogeneous. You can specify device_id in init_process_group()

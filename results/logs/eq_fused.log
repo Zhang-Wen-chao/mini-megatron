@@ -1,0 +1,20 @@
+CMD: torchrun --nproc_per_node=1 <repo>/main.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 0 --micro-batch-size 4 --amp --data-file <repo>/experiments/identity_data.pt --fused
+
+step   10 | loss 3.2269
+step   20 | loss 0.2633
+step   30 | loss 0.0504
+step   40 | loss 0.0337
+step   50 | loss 0.0317
+
+============================================================
+Mini-Megatron Results (TP=1, PP=1, AMP=BF16)
+============================================================
+Model:           768hid 12lay 12head
+Micro batch:     4  |  Seq len: 512  |  Steps: 50
+------------------------------------------------------------
+Throughput:      53,771 tok/s
+Peak memory:     3.88 GB/GPU
+MFU:             37.63%
+Final loss:      0.0317
+============================================================
+

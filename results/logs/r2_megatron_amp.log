@@ -1,0 +1,38 @@
+CMD: torchrun --nproc_per_node=1 <repo>/eval/run_megatron_baseline.py --tp 1 --pp 1 --num-steps 50 --warmup-steps 10 --micro-batch-size 4 --amp
+
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+step   10 | loss 11.1984
+step   20 | loss 11.0706
+step   30 | loss 11.0618
+step   40 | loss 10.9860
+step   50 | loss 10.9607
+
+============================================================
+Megatron-Core Baseline Results (AMP=BF16)
+============================================================
+Config:          TP=1 PP=1
+Model:           768hid 12lay 12head
+Micro batch:     4  |  Seq len: 512  |  Steps: 50
+------------------------------------------------------------
+Throughput:      24,518 tok/s
+Peak memory:     4.88 GB/GPU
+MFU:             17.16%
+Final loss:      10.9607
+============================================================
+
+
+
+STDERR:
+/usr/local/lib/python3.12/dist-packages/torch/library.py:357: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+  Overriding a previously registered kernel for the same operator and the same dispatch key
+  operator: flash_attn::_flash_attn_backward(Tensor dout, Tensor q, Tensor k, Tensor v, Tensor out, Tensor softmax_lse, Tensor(a6!)? dq, Tensor(a7!)? dk, Tensor(a8!)? dv, float dropout_p, float softmax_scale, bool causal, SymInt window_size_left, SymInt window_size_right, float softcap, Tensor? alibi_slopes, bool deterministic, Tensor? rng_state=None) -> Tensor
+    registered at /usr/local/lib/python3.12/dist-packages/torch/_library/custom_ops.py:926
+  dispatch key: ADInplaceOrView
+  previous kernel: no debug info
+       new kernel: registered at /usr/local/lib/python3.12/dist-packages/torch/_library/custom_ops.py:926 (Triggered internally at /opt/pytorch/pytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:208.)
+  self.m.impl(
+[rank0]:[W812 01:32:09.100489325 ProcessGroupGloo.cpp:516] Warning: Unable to resolve hostname to a (local) address. Using the loopback address as fallback. Manually set the network interface to bind to with GLOO_SOCKET_IFNAME. (function operator())
+<internal>/megatron/core/transformer/transformer_config.py:2178: UserWarning: full scope is deprecated. Use empty cuda_graph_modules to capture the whole layer.
+  warnings.warn(
