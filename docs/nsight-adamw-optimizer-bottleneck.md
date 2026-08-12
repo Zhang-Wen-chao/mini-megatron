@@ -22,6 +22,17 @@
 
 > 注意：ncu 需要 GPU 性能计数器权限（宿主机驱动 `RmProfilingAdminOnly=1` 时容器内无权限）。如果遇到 `ERR_NVGPUCTRPERM`，方案：宿主机 root 跑 ncu，或由管理员设置 `NVreg_RmProfilingAdminOnly=0`（需重载驱动）。本文 nsys 数据已足够支撑分析，ncu 作为深入手段演示。
 
+### 为什么不用 torch.profiler
+
+| | nsys (Nsight Systems) | torch.profiler |
+|---|---|---|
+| 视角 | 系统级：kernel + CPU-GPU 间隙 + launch 开销 + 跨进程 | Python/算子级：侧重框架层调用 |
+| 能看到 | GPU 忙碌率（kernel 总时间 ÷ 起止跨度）、kernel 间空隙 | 每个 Python 算子的耗时 |
+| 多卡 | 系统级采样，一个报告看所有进程 | 需要逐 rank 收集合并 |
+| 适合 | 回答"时间花在哪"（我们这次的场景） | 回答"哪个算子调用慢" |
+
+本例的场景是"不知道时间花在哪"，先用 nsys 拿到全局 kernel 分布，比 torch.profiler 的算子视图更接近硬件事实。
+
 ### 采集命令（可复现）
 
 ```bash
@@ -87,6 +98,13 @@ L20 的算力（110 TFLOPS）足以让 GEMM 跑在 36.8%，而优化器的内存
 ### 另一个隐藏开销：autocast 的逐 GEMM cast
 
 8.7% 的 `bfloat16_copy_kernel`：BF16 autocast 下，`nn.Linear` 的 **FP32 权重在每次 GEMM 前都要被 cast 成 BF16**。12 层 × 6 个 Linear × 前向+反向 ≈ 150 次/步的小型 copy kernel。这个在后续用 `torch.compile` 或权重预转换可消除。
+
+### 第三个信号：GPU 忙碌率只有 83.4%
+
+除了 kernel 分类，还从时间线算出两个系统级指标：
+
+- **GPU 忙碌率 = kernel 总时间 ÷ kernel 起止跨度 = 2.210s ÷ 2.598s = 85.1%**（baseline）/ 83.4%（fused 后）——即 GPU 有 ~15% 时间是空闲的，不是 100% 被占满；
+- **每步 ~708 次 kernel 调用**，kernel 间平均空隙 ~70µs——小模型训练中 CPU launch 跟不上 GPU 执行，launch 开销是隐藏瓶颈（这也是后续 `torch.compile` 减 launch 的依据）。
 
 ## 优化：一行代码，fused AdamW
 
@@ -191,6 +209,28 @@ nsys 验证 compile 的效果来源：
 | softmax (CE) | 4.9% | 1.38ms/次的 log_softmax，可换 vocab-parallel + 融合 kernel |
 
 另外 L20 单卡的天花板受 GDDR6 带宽限制（864GB/s），理论峰值 MFU 也就是 50% 上下；多卡 PCIe 无 NVLink 是硬伤。真正要追更高 MFU 需要 H100 级别带宽或更大模型。
+
+## 面试追问：Nsight 工具怎么用的（话术）
+
+**"Nsight Systems 你是怎么用的？"**
+
+> "分四步。第一，目标先行：单卡 MFU 只有 36%，我想量化算力浪费在哪，不靠猜。第二，用 `nsys profile --trace=cuda` 包住 torchrun 跑 40 步（10 warmup + 30 测量），得到 .nsys-rep 报告。第三，处理数据：`nsys stats -r cuda_gpu_kern_sum` 出 kernel 汇总表；报告可导出 SQLite，我用 Python 按 kernel 名字归类聚合——multi_tensor 开头是 AdamW、cutlass/ampere 是 GEMM、flash 是 attention——算每类的时间占比。第四，用量化结果驱动优化：fused 后重抓时间线验证 45.2%→26.3%，compile 后再抓验证 cast 归零、launch 减少。每步都是数据说话。"
+
+**"nsys 和 ncu 什么区别？"**
+
+> "nsys 是系统级，回答'时间花在哪'——kernel 分类、调用次数、GPU 忙碌率、CPU-GPU 间隙；ncu 是 kernel 级，回答'某个 kernel 为什么慢'——比如 DRAM 吞吐和 SM 利用率，判断是带宽瓶颈还是算力瓶颈。ncu 需要硬件性能计数器权限，我这次环境被驱动 `RmProfilingAdminOnly=1` 限制了，没跑成，这也是我如实交代的边界。"
+
+**"为什么不用 torch.profiler？"**
+
+> "torch.profiler 也能看 kernel，但它是 Python/算子层视角；nsys 是系统级采样，能看到 launch 开销、GPU 空闲、跨进程（多卡）这些框架之外的东西。我的场景是'不知道时间花在哪'，需要全局硬件事实，所以选了 nsys。"
+
+**"45.2% 怎么算的？口径是什么？"**
+
+> "优化器 kernel 总时间 ÷ 全部 kernel 总时间。注意这不是 wall-clock 占比——GPU 忙碌率只有 85%，优化器占训练总耗时是 38.5%。两个口径我都算过，文档里写明用的是 kernel 时间口径。"
+
+**"你验证过吗？工具数据可信吗？"**
+
+> "两个层面：一是数值，MFU 提升 17%/30% 和 nsys 看到的优化器时间减少吻合；二是行为，固定数据 + 同 seed 下优化前后 loss 曲线逐 step 对比，50 步 diff=0、200 步 Max ~1e-4，证明提速不是靠改变训练语义。"
 
 ## 复盘：面试怎么讲这个故事
 
