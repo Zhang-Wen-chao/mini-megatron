@@ -13,7 +13,7 @@ from model.embedding import Embedding
 from model.transformer import DecoderLayer, Decoder, GPT
 from model.loss import CrossEntropyLoss
 from parallel.process_groups import init_model_parallel, set_model_parallel
-from parallel.pipeline_parallel import train_pipeline
+from parallel.pipeline_parallel import train_pipeline, train_pipeline_1f1b
 from parallel.data_parallel import allreduce_grads
 
 
@@ -72,6 +72,8 @@ def main():
     parser.add_argument("--micro-batch-size", type=int, default=cfg.MICRO_BATCH_SIZE)
     parser.add_argument("--tp", type=int, default=1)
     parser.add_argument("--pp", type=int, default=1)
+    parser.add_argument("--schedule", type=str, default="1f1b", choices=["1f1b", "serial"],
+                        help="Pipeline schedule: 1f1b interleaves forward/backward to shrink bubbles; serial is the legacy lockstep")
     parser.add_argument("--log-interval", type=int, default=10)
     parser.add_argument("--amp", action="store_true", help="Enable BF16 mixed precision (autocast)")
     parser.add_argument("--fused", action="store_true", help="Use fused AdamW (single kernel per step)")
@@ -146,7 +148,8 @@ def main():
         data_iter = make_data_iterator(B, S, V, preload_data)
 
         dp_group = mpu.get("dp_group")
-        elapsed = train_pipeline(
+        train_fn = train_pipeline_1f1b if args.schedule == "1f1b" else train_pipeline
+        elapsed = train_fn(
             embedding, decoder_layers, ln_f, lm_head, loss_fn,
             optimizer, scheduler, data_iter, B, S, V, device,
             args.num_steps,
