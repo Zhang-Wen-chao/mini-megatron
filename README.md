@@ -199,9 +199,9 @@ lockstep) to `(pp-1)/(2m+pp-1)`:
 
 ```
                 serial (legacy)             1F1B (--schedule 1f1b)      gain
-TP=2 PP=2 |  15,986 tok/s |  2.80% MFU |  25,635 tok/s |  4.44% MFU |  +60% tok/s
-TP=2 PP=2 |          --           |  34,974 tok/s |  6.14% MFU |  (+BF16)
-TP=1 PP=4 |  (deadlocks: serial only supports pp=2)  |  46,444 tok/s |  8.00% MFU
+TP=2 PP=2 |  16,074 tok/s |  2.80% MFU |  25,236 tok/s |  4.44% MFU |  +57% tok/s
+TP=2 PP=2 |          --           |  35,686 tok/s |  6.14% MFU |  (+BF16, serial 23,650)
+TP=1 PP=4 |  (deadlocks: serial only supports pp=2)  |  45,854 tok/s |  8.00% MFU
 ```
 
 > Bubble theory: serial lockstep has each stage idle half the time at pp=2
