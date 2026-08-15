@@ -39,9 +39,17 @@ torchrun --nproc_per_node=2 main.py --tp 2 --pp 1
 # TP=2 PP=2 (4 GPUs)
 torchrun --nproc_per_node=4 main.py --tp 2 --pp 2
 
+# TP=2 PP=2 with 1F1B schedule (default) — bubbles shrink from ~50% to ~1%
+torchrun --nproc_per_node=4 main.py --tp 2 --pp 2 --schedule 1f1b
+
 # All combined
 torchrun --nproc_per_node=4 main.py --tp 2 --pp 2 --amp
 ```
+
+`--schedule` selects the pipeline schedule: `1f1b` (default) interleaves
+forward/backward per stage so the backward of micro-batch j fills the bubble
+left by forward of j+1 (bubble `(pp-1)/(2m+pp-1)`); `serial` keeps the legacy
+lockstep schedule (bubble `(pp-1)/pp`, pp=2 only).
 
 ### Configuration
 
@@ -125,7 +133,7 @@ mini-megatron/
 │   └── loss.py              # Cross-entropy loss
 ├── parallel/
 │   ├── tensor_parallel.py   # ColumnParallelLinear, RowParallelLinear
-│   ├── pipeline_parallel.py # Serial pipeline schedule + warmup
+│   ├── pipeline_parallel.py # 1F1B schedule + legacy serial reference
 │   ├── data_parallel.py     # Gradient all-reduce
 │   └── process_groups.py    # TP/PP/DP communicator setup
 └── comm/
@@ -182,6 +190,27 @@ TP=2 PP=2 |  23,186 tok/s |  4.21% MFU |  23,261 tok/s |  4.22% MFU |   +0.3%
 > The gain shrinks with TP/PP because each rank owns fewer parameters, so the
 > optimizer's memory-bandwidth cost no longer dominates.
 > Full story + complete test conditions: `docs/nsight-adamw-optimizer-bottleneck.md`.
+
+### 1F1B pipeline schedule (2026-08-15, 50 steps, same conditions)
+
+The default `--schedule 1f1b` interleaves forward/backward per stage (Megatron's
+non-interleaved 1F1B), shrinking the pipeline bubble from `(pp-1)/pp` (serial
+lockstep) to `(pp-1)/(2m+pp-1)`:
+
+```
+                serial (legacy)             1F1B (--schedule 1f1b)      gain
+TP=2 PP=2 |  15,986 tok/s |  2.80% MFU |  25,635 tok/s |  4.44% MFU |  +60% tok/s
+TP=2 PP=2 |          --           |  34,974 tok/s |  6.14% MFU |  (+BF16)
+TP=1 PP=4 |  (deadlocks: serial only supports pp=2)  |  46,444 tok/s |  8.00% MFU
+```
+
+> Bubble theory: serial lockstep has each stage idle half the time at pp=2
+> (one micro-batch streams end-to-end per step); 1F1B keeps every stage busy
+> alternating forward/backward, cutting the measured wall time ~1.6x at pp=2.
+> The 1F1B schedule also fixes two latent serial-schedule bugs: it works for
+> any pp >= 2 (serial only implemented stages 0 and pp-1), and every
+> micro-batch gets its backward on every stage (serial skipped the first
+> `pp-rank-1` backwards on stage 0).
 
 ### vs Megatron-Core (2026-08-11, strict A/B, 50 steps, same MFU formula)
 
@@ -246,8 +275,11 @@ python eval/compare_loss.py
 
 - **No HuggingFace dependency** — pure PyTorch. No transformers, no accelerate.
 - **Random data** for benchmarking, no real dataset downloads needed.
-- **Serial pipeline schedule** — each stage processes one micro-batch per iteration,
-  with warmup to fill the pipeline. Not interleaved 1F1B.
+- **1F1B pipeline schedule** — each stage runs `pp-rank-1` warmup forwards,
+  then alternates forward/backward until the drain, so the backward of
+  micro-batch j fills the bubble of forward j+1. Recvs are posted one op early
+  (look-ahead) so transfers overlap the previous op; sends are fire-and-forget.
+  The legacy `--schedule serial` lockstep is kept for comparison.
 - **BF16 mixed precision** via `torch.autocast` (no loss scaling needed; L20 supports BF16 natively).
 - **Gradient accumulation** in PP mode (gradients sum across micro-batches, one
   optimizer step per sweep). No accumulation in non-PP mode.
@@ -262,7 +294,7 @@ To stay under 800 lines, this repo omits:
 - **Activation checkpointing** (interface in `model/recompute.py`, not invoked)
 - **Distributed data loading** (code in `data/dataset.py`, not used; main.py uses
   inline random data generation)
-- **Interleaved 1F1B** (only serial pipeline)
+- **Interleaved 1F1B** (virtual pipeline stages — 1F1B without interleaving is wired)
 - **CUDA graphs / Flash Attention / fused kernels** (all PyTorch native)
 - **FSDP, MoE, CP, EMA, dynamic loss scaling**
 

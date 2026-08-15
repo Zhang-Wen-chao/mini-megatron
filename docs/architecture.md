@@ -71,11 +71,13 @@ main.py (TP/DP)
 
 ```
 main.py (PP)
-  └→ train_pipeline() in parallel/pipeline_parallel.py
+  └→ train_pipeline_1f1b() in parallel/pipeline_parallel.py（默认，--schedule serial 用旧版）
+       ├→ build_1f1b_schedule(): 每 stage 的 op 序列（warmup F → F/B 交替 → drain B）
        ├→ Stage 0: forward embedding + decoder_layers[0..N/PP] → send to stage 1
        └→ Stage 1: recv → forward → send
        └→ Last stage: recv → forward + CE loss → backward → send grad
        └→ Stage 0: recv grad → backward → optimizer.step
+       └→ look-ahead: recv 提前一个 op 发出，与上一个 op 的计算重叠
 ```
 
 ---
@@ -90,9 +92,13 @@ main.py (PP)
 attention 用 PyTorch 内置的 SDPA。
 **原因**：自动选择最优 kernel（Flash Attention 等），避免手写 attention。
 
-### 3. serial 流水线（非 interleaved 1F1B）
-PP 实现是简化的 serial 模式，每个 stage 一个 micro-batch。
-**原因**：interleaved 1F1B 太复杂，对 125M 模型没收益。
+### 3. 1F1B 流水线（默认）+ serial 参考
+PP 默认用 Megatron 的 1F1B 调度：每 stage 先做 `pp-rank-1` 个 warmup forward，
+然后交替 forward/backward，最后 drain。bubble 从 serial 的 `(pp-1)/pp` 降到
+`(pp-1)/(2m+pp-1)`（pp=2, m=50 时 ~1%）。
+**原因**：1F1B 让每个 stage 全程忙碌（backward 填充 forward 的 bubble），
+同时支持任意 pp >= 2；旧的 serial 锁步调度只实现了 pp=2（中间 stage 无代码）。
+`--schedule serial` 保留作为对比基线。
 
 ### 4. 标准 init（std=0.02）
 所有 Linear 用 `N(0, 0.02)`，不用 Megatron 的 scaled init。
@@ -142,7 +148,7 @@ warmup：stage 0 先做 N-1 个 forward，再开始 normal pipeline。
 |------|------|------|
 | all-reduce（DP） | `dist.all_reduce` | parallel/data_parallel.py |
 | all-reduce inside RowParallel | `autograd.Function` | comm/all_reduce.py |
-| send/recv（PP） | `dist.batch_isend_irecv` | parallel/pipeline_parallel.py |
+| send/recv（PP） | `dist.isend/irecv`（异步 + look-ahead） | parallel/pipeline_parallel.py |
 | broadcast | `dist.broadcast` | parallel/process_groups.py |
 
 ---
