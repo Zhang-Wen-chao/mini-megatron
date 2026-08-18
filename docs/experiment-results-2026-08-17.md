@@ -1,10 +1,10 @@
-# 2026-08-17 L20 experiment evidence ledger
+# 2026-08-17/18 L20 experiment evidence ledger
 
-This is an auditable record of the current L20 experiment session. It does not
-replace the [experiment protocol](experiment-protocol.md), and its benchmark
-numbers are **provisional**: the experiment tooling had not yet been committed
-when the runs were made, so every manifest records source_tree_clean=false.
-They are useful corroborating evidence, but are not release-quality claims.
+This is an auditable record of the L20 experiment sessions. It does not replace
+the [experiment protocol](experiment-protocol.md). The original 2026-08-17
+samples remain useful historical corroboration but are provisional because their
+manifests record `source_tree_clean=false`. The current conclusion below comes
+from the 2026-08-18 clean-tree rerun and supersedes those samples.
 
 ## Environment and completed checks
 
@@ -13,10 +13,11 @@ They are useful corroborating evidence, but are not release-quality claims.
 - Historical profiling used BF16. The current fair comparison uses a 125M GPT,
   TP=1/PP=1, FP32, micro-batch 4, sequence 512, 30 warm-up, and 200 measured
   steps.
-- Test suite: python3 -m pytest -q in that container completed with
-  **38 passed in 11.51s** after the fair-contract QKV conversion test was added.
-  This is the full suite, rather than a Mac-only
-  partial check.
+- Clean rerun source commit: `ad82d7edf9a1a11f61672aae492697cf15434b85`
+  (the L20-history equivalent of local source commit `f402fea`).
+- Test suite: `python3 -m pytest -q` in that container completed with
+  **38 passed in 11.28s** before the clean rerun. This is the full suite,
+  rather than a Mac-only partial check.
 - Every sample cited below passed the runner's idle-GPU preflight. An earlier
   active-GPU sample was retained in its own bundle and excluded.
 
@@ -41,7 +42,7 @@ cover larger models, multi-node jobs, production features, or training quality.
 The fused/unfused random-data losses were close at the last step, but that is
 not a substitute for the fixed-input equivalence protocol.
 
-## Fair TP=1 FP32 comparison (2026-08-17, provisional)
+## Fair TP=1 FP32 comparison (2026-08-18, clean tree)
 
 This replaced the invalid cross-framework claim above with a deliberately
 shared model contract:
@@ -61,29 +62,36 @@ shared model contract:
   MCore checkpoint
   2c7609572698f0cbb660b62a3ddb51fb49e3730b27b74a626ac532c61b250222;
   batch artifact 3e0f943f435db4bac634f57af2b6a6a21f0f6ecbe2c0f15d5c7efecaa49cabc5.
-- FP32 equivalence gate passed: initial mapped weights have exact zero
-  difference; logits relative L2 is 3.5498e-4, gradients 3.5508e-4, and
-  post-one-step parameters 6.3139e-5, within declared limits of 5e-4, 5e-4,
-  and 1e-4. A 25-update fixed-sequence smoke test ended at loss 11.144128
-  (mini) vs 11.146294 (MCore), a 0.019% difference.
+- The clean-tree FP32 equivalence gate passed: initial mapped weights have exact
+  zero difference; logits relative L2 is 3.5498e-4, worst gradient relative L2
+  is 3.5508e-4, and post-one-step parameter relative L2 is 6.3139e-5, within
+  declared limits of 5e-4, 5e-4, and 1e-4.
 
 Five idle-GPU, ABBA/BAAB-style pairs used those artifacts, standard unfused
-AdamW, and FP32. Every bundle passed checksum validation; aggregate:
+AdamW, FP32, 30 warm-up steps, and 200 measured steps. Every bundle passed
+checksum validation and records `source_tree_clean=true`; aggregate:
 
 | Metric | mini | Megatron-Core | mini / MCore |
 |---|---:|---:|---:|
-| Mean throughput | 32,657 tok/s | 27,642.6 tok/s | **1.181404x** |
-| Median throughput | 32,654 tok/s | 27,673 tok/s | **1.180517x** |
-| Sample standard deviation | 29.93 | 60.55 | 0.001972 |
-| Range | 32,622-32,699 | 27,577-27,708 | 1.179417-1.184017 |
+| Mean throughput | 32,669.6 tok/s | 27,704.8 tok/s | **1.179204x** |
+| Median throughput | 32,664 tok/s | 27,716 tok/s | **1.178825x** |
+| Sample standard deviation | 17.34 | 24.39 | 0.001047 |
+| Range | 32,654-32,690 | 27,672-27,731 | 1.178079-1.180554 |
 | Peak allocated memory | 4.52 GB | 5.13 GB | — |
 
-The aggregate is results/aggregates/fair-tp1-fp32-unfused-provisional.json; the
-ten source bundles are 20260817T161633Z through 20260817T162209Z with the
-fair-tp1-fp32-unfused name. It remains provisional because the source tree was
-dirty (source_tree_clean=false), but it is a materially fairer result than the
-old 2.289x diagnostic: it supports only this exact bias-free TP=1 FP32 contract,
-not production, BF16, larger-model, multi-GPU, or training-quality claims.
+The immutable aggregate is
+`results/aggregates/fair-tp1-fp32-unfused-clean-ad82d7e.json` (SHA-256
+`132cda05cc47c0042759eb053380df31b08efbd7b704989e47e8881ef731a213`).
+Its ten source bundles are in `results/runs-clean-ad82d7e/`, pairs 01–05. This
+supports one deliberately narrow statement: **on this L20, for this shared
+bias-free 125M GPT contract at TP=1/PP=1 in FP32 with standard AdamW, mini
+achieved 1.179204x the throughput of the matching Megatron-Core path.** It does
+not support claims about default MCore, BF16, fused optimizers, larger models,
+TP/PP/multi-GPU scaling, production workloads, or training quality.
+
+The prior dirty-tree aggregate is retained as a historical reproducibility
+record, not combined with this result. The old 2.289x cross-framework BF16
+measurement remains a non-equivalent diagnostic and is not a performance claim.
 
 BF16 is explicitly excluded from the fair performance claim. Under the same
 initial weights and one batch, its logits relative L2 was 5.3204e-3, the worst
@@ -95,9 +103,23 @@ numerical difference is resolved.
 ## Nsight Systems source evidence
 
 Raw reports are retained on the L20 project archive (not committed to Git):
-/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs/. Both
-bundles passed experiments/validate_run_bundle.py; their manifests, command
-logs, CSV exports, checksums, and analyzer output are alongside the reports.
+`/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/`. Manifests,
+commands, CSV exports, checksums, and conservative analyzer output are beside
+each report. Profile timing is not included in throughput statistics.
+
+The clean-tree profiles use the same checkpoints/batches and FP32 contract as
+the throughput study, with 10 warm-up and 20 measured steps:
+
+| Bundle | rank0.nsys-rep | rank0.sqlite | kernel time | Conservative kernel-time split | SHA-256 (.nsys-rep / .sqlite) |
+|---|---:|---:|---:|---|---|
+| `20260818T003611Z-fair-tp1-fp32-clean-profile-mini` | 3.8 MB | 12 MB | 1.8362 s | GEMM 61.54%, copy/cast 4.09%, unclassified 34.36% | `52ff06a0d9099f5b879a3c1fab72b96027fece3e2293e1c994f4b6c37296c902` / `cde5afc1de50c83d48dbddb49d6e951ad364ddd615fbb5b697d9bfea45279ec0` |
+| `20260818T003641Z-fair-tp1-fp32-clean-profile-mcore` | 4.2 MB | 13 MB | 2.0363 s | GEMM 50.18%, copy/cast 10.51%, unclassified 39.31% | `48780b2bb1579d316598f834620951dfbe71af6d986d0e470249905961b59520` / `2f37c97a9748072965f55f5cf2d2d2a30d20a0d597da84c2c5c94afdb26a94fe` |
+
+These are kernel-time descriptions, not a causal proof of the throughput gap:
+the classifier intentionally leaves unmatched kernels unclassified and makes no
+unfused-AdamW attribution from generic elementwise names.
+
+Historical BF16 profiles remain preserved separately:
 
 | Bundle | rank0.nsys-rep | rank0.sqlite | SHA-256 (.nsys-rep / .sqlite) |
 |---|---:|---:|---|
@@ -111,13 +133,13 @@ identifies the explicit fused AdamW kernel: 432.31 ms, 450 invocations, 26.32%
 of 1.6428 s total kernel time (GEMM 49.52%, copy/cast 12.00%, unclassified
 12.16%). These are kernel-time shares, not wall-clock shares.
 
-## Promoting this session to a publishable result
+## What remains before broader claims
 
-1. Commit the runner, validators, analyzer, and documentation first.
-2. The TP=1 FP32 canonical conversion and fixed batch now exist. Commit them,
-   rerun their equivalence gate and the five pairs on a clean source tree, then
-   extend the conversion and parity gate to TP/PP before making scaling claims.
-3. Re-capture the two profiles, validate every bundle, and publish the new
-   aggregate only when its manifests show source_tree_clean=true.
-4. Preserve the raw reports in the immutable archive or Git LFS and record
-   their checksums in the resulting ledger.
+1. Extend shared-weight conversion and numerical parity gates to TP/PP before
+   making any scaling claim.
+2. Resolve the BF16 parity failure before presenting a BF16 cross-framework
+   result as semantically equivalent.
+3. Repeat the protocol for larger models and production-relevant configurations
+   if those scopes need conclusions.
+4. Preserve raw reports in the immutable archive or Git LFS and keep their
+   checksums in this ledger.

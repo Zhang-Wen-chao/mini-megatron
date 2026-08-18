@@ -8,25 +8,25 @@
 
 ---
 
-## 零、最新受控证据（2026-08-17，暂定）
+## 零、最新受控证据（2026-08-18，clean tree）
 
-最新 L20 会话已完成 5 组交替配对、GPU 空闲预检、run bundle 校验和 Nsight
-原始产物归档：
+最新 L20 会话已在已提交源码 (`ad82d7e`)、GPU 空闲预检下完成 5 组交替配对，
+所有 run bundle 校验和与两份 Nsight 原始产物均已验证：
 
 - **公平 TP=1 FP32 对比**：同权重转换、同一 230 个固定 next-token batch、同一
   无 bias GPT 合同、标准 AdamW、5 个交替配对，mini/MCore 配对均值为
-  **1.181404x**（范围 1.179417-1.184017；mini 32,657，MCore 27,642.6 tok/s）。
-  此结果仅适用于该精确的单卡 FP32 合同，且因 dirty tree 仍是暂定证据。
+  **1.179204x**（范围 1.178079-1.180554；mini 32,669.6，MCore 27,704.8 tok/s）。
+  每个 manifest 均为 `source_tree_clean=true`。此结果只适用于该精确的
+  单卡 FP32 合同，不能外推为通用框架结论。
 - 旧的 mini fused 对仓库 Megatron-Core custom-loop baseline 2.289x 测量没有共享
   权重、固定输入或相同前向图，现仅保留为脚本端到端开销的诊断记录，**不可解读为
   框架性能胜负**。
 - mini fused 对 mini unfused：**+17.08%**（1.1708x 配对均值；5 组）。
-- 正确的 L20 容器完整测试：**38 passed in 11.51s**。
+- 正确的 L20 容器完整测试：**38 passed in 11.28s**。
 
-这些运行使用了尚未提交的实验工具，因此 manifest 标记为
-source_tree_clean=false；它们是可复核的**暂定证据**，不是发布结论。完整
-环境、逐项统计、原始 .nsys-rep/SQLite 路径与 SHA-256、以及重新跑成发布级
-证据的步骤见 [2026-08-17 evidence ledger](experiment-results-2026-08-17.md)。
+完整环境、逐项统计、原始 .nsys-rep/SQLite 路径与 SHA-256 见
+[2026-08-17/18 evidence ledger](experiment-results-2026-08-17.md)。旧的
+dirty-tree 样本只作为历史对照保留，不参与当前汇总。
 该 custom-loop baseline 不构成“mini-megatron 普遍快于 Megatron”的主张；重跑前
 必须完成同权重、同输入、同语义的一步校验。
 BF16 目前没有通过同一数值门槛，不能与 FP32 公平结论混写。

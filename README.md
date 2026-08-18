@@ -12,20 +12,20 @@ the four most-used parallel strategies with 0.3% of the code.
 
 This is **not a production framework**. It's a learning artifact that:
 - Works end-to-end (TP/PP/DP/AMP all wired and tested)
-- Includes a provisional diagnostic comparison against a Megatron-Core
-  custom-loop baseline; it is not a same-model performance verdict
+- Includes a narrowly scoped, clean-tree comparison against a matching
+  Megatron-Core custom-loop path; it is not a general framework verdict
 - Fits in one sitting so the entire training loop is readable
 
 The performance tables are scoped microbenchmarks, not a claim that this project
 is a general replacement for Megatron-Core. New measurements follow the
 [credible experiment protocol](docs/experiment-protocol.md).
 The latest L20 evidence, retained profiler artifacts, and its limitations are in
-[the 2026-08-17 evidence ledger](docs/experiment-results-2026-08-17.md).
+[the 2026-08-17/18 evidence ledger](docs/experiment-results-2026-08-17.md).
 
 The current most comparable result is deliberately narrow: under a shared,
 bias-free 125M TP=1 FP32 contract with converted identical weights, fixed
 next-token batches, standard AdamW, and five alternating pairs, mini recorded
-a provisional 1.1814x throughput ratio relative to the matching Megatron-Core
+a clean-tree 1.179204x throughput ratio relative to the matching Megatron-Core
 path. It is not a general framework claim; BF16 did not pass the same numerical
 equivalence gate and is reported separately rather than folded into this result.
 

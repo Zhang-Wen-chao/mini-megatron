@@ -3,10 +3,14 @@
 > 工具实践 | mini-megatron 性能调优记录
 > 环境：4×NVIDIA L20 (48GB, GDDR6 @ 864GB/s) · NGC PyTorch 26.01 · 单卡 125M GPT · BF16
 
-> **2026-08-17 复核说明**：本文下方的 45.2% unfused AdamW 归因和 50 步表格是
+> **2026-08-18 复核说明**：本文下方的 45.2% unfused AdamW 归因和 50 步表格是
 > 历史记录，不能把它们和新的 profile 混为一谈。新的原始 .nsys-rep、SQLite、
 > CSV、SHA-256 和保守重分析都已归档在
-> [2026-08-17 evidence ledger](experiment-results-2026-08-17.md)。新分析只将显式
+> [2026-08-17/18 evidence ledger](experiment-results-2026-08-17.md)。在 clean-tree
+> FP32 公平合同下，新 profile 的 kernel time 为 mini 1.8362 s、MCore 2.0363 s；
+> mini 的 GEMM/copy-cast/unclassified 为 61.54%/4.09%/34.36%，MCore 为
+> 50.18%/10.51%/39.31%。这些是描述性 kernel-time 分类，不是吞吐差异的因果证明。
+> 分析只将显式
 > FusedAdamMathFunctor / multi_tensor_apply_kernel 归为 fused AdamW：fused
 > capture 为 432.31 ms（450 次，26.32% GPU kernel time）；unfused capture 的
 > 通用 elementwise kernel 保留为 unclassified，**不再声称新的 trace 独立证明
