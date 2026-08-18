@@ -1,0 +1,32 @@
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+{"amp": false, "checkpoint_sha256": "2c7609572698f0cbb660b62a3ddb51fb49e3730b27b74a626ac532c61b250222", "contract": "12L-768H-12head-3072FFN, learned absolute position, pre-LN, GELU, no dropout, bias-free linears, causal next-token cross entropy", "data_sha256": "3e0f943f435db4bac634f57af2b6a6a21f0f6ecbe2c0f15d5c7efecaa49cabc5", "elapsed_seconds": 1.5340296630859376, "final_loss": 11.102472305297852, "fused": false, "implementation": "mcore", "micro_batch_size": 4, "num_steps": 20, "peak_memory_gb": 5.12423849105835, "sequence_length": 512, "throughput_tok_s": 26700.917841186092, "warmup_steps": 10}
+Throughput:      26,701 tok/s
+Peak memory:     5.12 GB/GPU
+Final loss:      11.102472
+Collecting data...
+Generating '/tmp/nsys-report-a335.qdstrm'
+
+[1/1] [0%                          ] rank0.nsys-rep
+[1/1] [0%                          ] rank0.nsys-rep
+[1/1] [5%                          ] rank0.nsys-rep
+[1/1] [6%                          ] rank0.nsys-rep
+[1/1] [0%                          ] rank0.nsys-rep
+[1/1] [7%                          ] rank0.nsys-rep
+[1/1] [11%                         ] rank0.nsys-rep
+[1/1] [=15%                        ] rank0.nsys-rep
+[1/1] [==18%                       ] rank0.nsys-rep
+[1/1] [===22%                      ] rank0.nsys-rep
+[1/1] [====25%                     ] rank0.nsys-rep
+[1/1] [=====29%                    ] rank0.nsys-rep
+[1/1] [======33%                   ] rank0.nsys-rep
+[1/1] [=======36%                  ] rank0.nsys-rep
+[1/1] [========40%                 ] rank0.nsys-rep
+[1/1] [=========44%                ] rank0.nsys-rep
+[1/1] [==========48%               ] rank0.nsys-rep
+[1/1] [===========50%              ] rank0.nsys-rep
+[1/1] [========================100%] rank0.nsys-rep
+[1/1] [========================100%] rank0.nsys-rep
+Generated:
+	/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003641Z-fair-tp1-fp32-clean-profile-mcore/profile/rank0.nsys-rep

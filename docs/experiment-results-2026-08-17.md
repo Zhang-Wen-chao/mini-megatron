@@ -102,10 +102,12 @@ numerical difference is resolved.
 
 ## Nsight Systems source evidence
 
-Raw reports are retained on the L20 project archive (not committed to Git):
-`/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/`. Manifests,
-commands, CSV exports, checksums, and conservative analyzer output are beside
-each report. Profile timing is not included in throughput statistics.
+The two clean-tree profile bundles are versioned in this repository under
+`results/runs-clean-ad82d7e/`; `git pull` retrieves their raw `.nsys-rep`,
+SQLite, CSV exports, manifests, commands, checksums, and conservative analyzer
+output. An identical copy remains in the L20 experiment archive at
+`/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/`. Profile
+timing is not included in throughput statistics.
 
 The clean-tree profiles use the same checkpoints/batches and FP32 contract as
 the throughput study, with 10 warm-up and 20 measured steps:

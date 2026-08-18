@@ -1,0 +1,153 @@
+{
+  "claim_scope": "Profiler evidence only; not a throughput sample.",
+  "elapsed_wall_seconds": 16.004503,
+  "environment_capture_time": "2026-08-18T00:36:11.066187+00:00",
+  "environment_file": "environment.json",
+  "executed_command": [
+    "nsys",
+    "profile",
+    "--force-overwrite",
+    "true",
+    "--trace",
+    "cuda,nvtx,osrt",
+    "--sample",
+    "none",
+    "--output",
+    "/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/rank0",
+    "torchrun",
+    "--nproc_per_node=1",
+    "experiments/run_fair_tp1_benchmark.py",
+    "--implementation",
+    "mini",
+    "--checkpoint",
+    "artifacts/fair-tp1-20260818-v2/mini_tp1.pt",
+    "--data-file",
+    "artifacts/fair-tp1-20260818-v2/next_token_batches.pt",
+    "--warmup-steps",
+    "10",
+    "--num-steps",
+    "20"
+  ],
+  "finished_at_utc": "2026-08-18T00:36:28.026525+00:00",
+  "gpu_preflight": {
+    "active_processes": [],
+    "command": [
+      "nvidia-smi",
+      "--query-compute-apps=pid,process_name,gpu_uuid",
+      "--format=csv,noheader"
+    ],
+    "return_code": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "input_artifacts": [
+    {
+      "path": "/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/artifacts/fair-tp1-20260818-v2/mini_tp1.pt",
+      "sha256": "93d634e9e45699266633946a5f9436f08369f160360fc6c229a71c8fdad47619",
+      "size_bytes": 650564512
+    },
+    {
+      "path": "/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/artifacts/fair-tp1-20260818-v2/next_token_batches.pt",
+      "sha256": "3e0f943f435db4bac634f57af2b6a6a21f0f6ecbe2c0f15d5c7efecaa49cabc5",
+      "size_bytes": 7538813
+    }
+  ],
+  "kind": "nsys_profile",
+  "metrics": {
+    "final_loss": 11.101361,
+    "peak_memory_gb": 4.51,
+    "throughput_tok_s": 32519.0
+  },
+  "profile_exports": {
+    "cuda_api_sum": {
+      "command": [
+        "nsys",
+        "stats",
+        "--report",
+        "cuda_api_sum",
+        "--format",
+        "csv",
+        "--output",
+        "/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/cuda_api_sum",
+        "/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/rank0.nsys-rep"
+      ],
+      "return_code": 0,
+      "stderr": "",
+      "stdout": "\nNOTICE: Existing SQLite export found: /mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/rank0.sqlite\n        It is assumed file was previously exported from: /mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/rank0.nsys-rep\n        Consider using --force-export=true if needed.\n\nProcessing [/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/rank0.sqlite] with [/usr/local/cuda-13.1/NsightSystems-cli-2025.6.1/target-linux-x64/reports/cuda_api_sum.py] to [/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/cuda_api_sum_cuda_api_sum.csv]... PROCESSED\n\n"
+    },
+    "cuda_gpu_kern_sum": {
+      "command": [
+        "nsys",
+        "stats",
+        "--report",
+        "cuda_gpu_kern_sum",
+        "--format",
+        "csv",
+        "--output",
+        "/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/cuda_gpu_kern_sum",
+        "/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/rank0.nsys-rep"
+      ],
+      "return_code": 0,
+      "stderr": "",
+      "stdout": "Generating SQLite file /mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/rank0.sqlite from /mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/rank0.nsys-rep\nProcessing [/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/rank0.sqlite] with [/usr/local/cuda-13.1/NsightSystems-cli-2025.6.1/target-linux-x64/reports/cuda_gpu_kern_sum.py] to [/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/cuda_gpu_kern_sum_cuda_gpu_kern_sum.csv]... PROCESSED\n\n"
+    },
+    "cuda_gpu_trace": {
+      "command": [
+        "nsys",
+        "stats",
+        "--report",
+        "cuda_gpu_trace",
+        "--format",
+        "csv",
+        "--output",
+        "/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/cuda_gpu_trace",
+        "/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/rank0.nsys-rep"
+      ],
+      "return_code": 0,
+      "stderr": "",
+      "stdout": "\nNOTICE: Existing SQLite export found: /mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/rank0.sqlite\n        It is assumed file was previously exported from: /mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/rank0.nsys-rep\n        Consider using --force-export=true if needed.\n\nProcessing [/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/rank0.sqlite] with [/usr/local/cuda-13.1/NsightSystems-cli-2025.6.1/target-linux-x64/reports/cuda_gpu_trace.py] to [/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/cuda_gpu_trace_cuda_gpu_trace.csv]... PROCESSED\n\n"
+    },
+    "sqlite": {
+      "command": [
+        "nsys",
+        "export",
+        "--type",
+        "sqlite",
+        "--force-overwrite",
+        "true",
+        "--output",
+        "/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/rank0",
+        "/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/profile/rank0.nsys-rep"
+      ],
+      "return_code": 0,
+      "stderr": "\n[1%                                                                            ]\n[2%                                                                            ]\n[3%                                                                            ]\n[=4%                                                                           ]\n[=5%                                                                           ]\n[==6%                                                                          ]\n[===7%                                                                         ]\n[====8%                                                                        ]\n[=====9%                                                                       ]\n[====10%                                                                       ]\n[=====11%                                                                      ]\n[======12%                                                                     ]\n[=======13%                                                                    ]\n[=======14%                                                                    ]\n[========15%                                                                   ]\n[=========16%                                                                  ]\n[==========17%                                                                 ]\n[===========18%                                                                ]\n[===========19%                                                                ]\n[============20%                                                               ]\n[=============21%                                                              ]\n[==============22%                                                             ]\n[==============23%                                                             ]\n[===============24%                                                            ]\n[================25%                                                           ]\n[=================26%                                                          ]\n[==================27%                                                         ]\n[==================28%                                                         ]\n[===================29%                                                        ]\n[====================30%                                                       ]\n[=====================31%                                                      ]\n[=====================32%                                                      ]\n[======================33%                                                     ]\n[=======================34%                                                    ]\n[========================35%                                                   ]\n[=========================36%                                                  ]\n[=========================37%                                                  ]\n[==========================38%                                                 ]\n[===========================39%                                                ]\n[============================40%                                               ]\n[============================41%                                               ]\n[=============================42%                                              ]\n[==============================43%                                             ]\n[===============================44%                                            ]\n[================================45%                                           ]\n[================================46%                                           ]\n[=================================47%                                          ]\n[==================================48%                                         ]\n[===================================49%                                        ]\n[====================================50%                                       ]\n[====================================51%                                       ]\n[=====================================52%                                      ]\n[======================================53%                                     ]\n[=======================================54%                                    ]\n[=======================================55%                                    ]\n[========================================56%                                   ]\n[=========================================57%                                  ]\n[==========================================58%                                 ]\n[===========================================59%                                ]\n[===========================================60%                                ]\n[============================================61%                               ]\n[=============================================62%                              ]\n[==============================================63%                             ]\n[==============================================64%                             ]\n[===============================================65%                            ]\n[================================================66%                           ]\n[=================================================67%                          ]\n[==================================================68%                         ]\n[==================================================69%                         ]\n[===================================================70%                        ]\n[====================================================71%                       ]\n[=====================================================72%                      ]\n[=====================================================73%                      ]\n[======================================================74%                     ]\n[=======================================================75%                    ]\n[========================================================76%                   ]\n[=========================================================77%                  ]\n[=========================================================78%                  ]\n[==========================================================79%                 ]\n[===========================================================80%                ]\n[============================================================81%               ]\n[============================================================82%               ]\n[=============================================================83%              ]\n[==============================================================84%             ]\n[===============================================================85%            ]\n[================================================================86%           ]\n[================================================================87%           ]\n[=================================================================88%          ]\n[==================================================================89%         ]\n[===================================================================90%        ]\n[===================================================================91%        ]\n[====================================================================92%       ]\n[=====================================================================93%      ]\n[======================================================================94%     ]\n[=======================================================================95%    ]\n[=======================================================================96%    ]\n[========================================================================97%   ]\n[=========================================================================98%  ]\n[==========================================================================99% ]\n[==========================================================================100%]\n",
+      "stdout": "Processing 209208 events: \n"
+    }
+  },
+  "profile_report": "profile/rank0.nsys-rep",
+  "return_code": 0,
+  "run_id": "20260818T003611Z-fair-tp1-fp32-clean-profile-mini",
+  "schema_version": 1,
+  "source_tree_clean": true,
+  "started_at_utc": "2026-08-18T00:36:12.022022+00:00",
+  "tags": {
+    "condition": "fair-tp1-fp32-unfused-clean-ad82d7e",
+    "purpose": "kernel-attribution",
+    "variant": "mini"
+  },
+  "target_command": [
+    "torchrun",
+    "--nproc_per_node=1",
+    "experiments/run_fair_tp1_benchmark.py",
+    "--implementation",
+    "mini",
+    "--checkpoint",
+    "artifacts/fair-tp1-20260818-v2/mini_tp1.pt",
+    "--data-file",
+    "artifacts/fair-tp1-20260818-v2/next_token_batches.pt",
+    "--warmup-steps",
+    "10",
+    "--num-steps",
+    "20"
+  ]
+}

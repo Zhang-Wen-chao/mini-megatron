@@ -1,0 +1,401 @@
+{
+  "categories": {
+    "copy_cast": {
+      "instances": 480,
+      "kernels": [
+        {
+          "instances": 420,
+          "name": "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 3)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)]>(at::TensorIteratorBase &, const T1 &)::[lambda(int) (instance 1)]>(int, T3)",
+          "total_time_ns": 74847276
+        },
+        {
+          "instances": 30,
+          "name": "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kernel_impl_nocast<at::native::CUDAFunctor_add<float>>(at::TensorIteratorBase &, const T1 &)::[lambda(int) (instance 1)]>(int, T3)",
+          "total_time_ns": 202881
+        },
+        {
+          "instances": 30,
+          "name": "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 3)]::operator ()() const::[lambda() (instance 4)]::operator ()() const::[lambda(long) (instance 1)]>(at::TensorIteratorBase &, const T1 &)::[lambda(int) (instance 1)]>(int, T3)",
+          "total_time_ns": 91680
+        }
+      ],
+      "percent_kernel_time": 4.092312572414197,
+      "total_time_ns": 75141837
+    },
+    "gemm": {
+      "instances": 5130,
+      "kernels": [
+        {
+          "instances": 1470,
+          "name": "void cutlass::Kernel2<cutlass_80_tensorop_s1688gemm_64x64_16x6_tn_align4>(T1::Params)",
+          "total_time_ns": 293033890
+        },
+        {
+          "instances": 1440,
+          "name": "void cutlass::Kernel2<cutlass_80_tensorop_s1688gemm_64x64_16x6_nt_align4>(T1::Params)",
+          "total_time_ns": 216313533
+        },
+        {
+          "instances": 360,
+          "name": "fmha_cutlassB_f32_aligned_64x64_k64_sm80(PyTorchMemEffAttention::AttentionBackwardKernel<cutlass::arch::Sm80, float, (bool)1, (bool)0, (bool)0, (int)64, (int)64, (int)64, (bool)0>::Params)",
+          "total_time_ns": 169178952
+        },
+        {
+          "instances": 1080,
+          "name": "void cutlass::Kernel2<cutlass_80_tensorop_s1688gemm_64x64_16x6_nn_align4>(T1::Params)",
+          "total_time_ns": 140613990
+        },
+        {
+          "instances": 30,
+          "name": "void cutlass::Kernel2<cutlass_80_tensorop_s1688gemm_128x128_16x5_nn_align4>(T1::Params)",
+          "total_time_ns": 87076258
+        },
+        {
+          "instances": 30,
+          "name": "void cutlass::Kernel2<cutlass_80_tensorop_s1688gemm_256x128_16x3_nt_align4>(T1::Params)",
+          "total_time_ns": 84002415
+        },
+        {
+          "instances": 360,
+          "name": "void cutlass::Kernel2<cutlass_80_tensorop_s1688gemm_128x128_16x4_nn_align4>(T1::Params)",
+          "total_time_ns": 76309897
+        },
+        {
+          "instances": 360,
+          "name": "fmha_cutlassF_f32_aligned_64x64_rf_sm80(PyTorchMemEffAttention::AttentionKernel<float, cutlass::arch::Sm80, (bool)1, (int)64, (int)64, (int)64, (bool)1, (bool)1>::Params)",
+          "total_time_ns": 63505501
+        }
+      ],
+      "percent_kernel_time": 61.54300073478088,
+      "total_time_ns": 1130034436
+    },
+    "unclassified": {
+      "instances": 30745,
+      "kernels": [
+        {
+          "instances": 6060,
+          "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::AUnaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float>>, std::array<char *, (unsigned long)2>>(int, T2, T3)",
+          "total_time_ns": 101961143
+        },
+        {
+          "instances": 3030,
+          "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::<unnamed>::lerp_scalar_kernel(at::TensorIteratorBase &, const c10::Scalar &)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float, float) (instance 1)], std::array<char *, (unsigned long)3>>(int, T2, T3)",
+          "total_time_ns": 86939262
+        },
+        {
+          "instances": 3030,
+          "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::addcdiv_cuda_kernel(at::TensorIteratorBase &, const c10::Scalar &)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float, float, float) (instance 1)], std::array<char *, (unsigned long)4>>(int, T2, T3)",
+          "total_time_ns": 68553935
+        },
+        {
+          "instances": 30,
+          "name": "void at::native::<unnamed>::cunn_SoftMaxBackward<(int)4, float, float, float, at::native::<unnamed>::LogSoftMaxBackwardEpilogue>(T2 *, const T4 *, const T4 *, long)",
+          "total_time_ns": 64140759
+        },
+        {
+          "instances": 3030,
+          "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::addcmul_cuda_kernel(at::TensorIteratorBase &, const c10::Scalar &)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float, float, float) (instance 1)], std::array<char *, (unsigned long)4>>(int, T2, T3)",
+          "total_time_ns": 53439657
+        },
+        {
+          "instances": 352,
+          "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<float>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+          "total_time_ns": 38986030
+        },
+        {
+          "instances": 30,
+          "name": "void at::native::<unnamed>::cunn_SoftMaxForward<(int)4, float, float, float, at::native::<unnamed>::LogSoftMaxForwardEpilogue>(T4 *, const T2 *, int)",
+          "total_time_ns": 37106626
+        },
+        {
+          "instances": 3030,
+          "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::sqrt_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>>(int, T2, T3)",
+          "total_time_ns": 36837224
+        },
+        {
+          "instances": 3030,
+          "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::BUnaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float>>, std::array<char *, (unsigned long)2>>(int, T2, T3)",
+          "total_time_ns": 36273888
+        },
+        {
+          "instances": 3030,
+          "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::CUDAFunctorOnSelf_add<float>, std::array<char *, (unsigned long)2>>(int, T2, T3)",
+          "total_time_ns": 35772894
+        },
+        {
+          "instances": 360,
+          "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::GeluBackwardCUDAKernelImpl(at::TensorIteratorBase &, at::native::GeluType)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float, float) (instance 1)], std::array<char *, (unsigned long)3>>(int, T2, T3)",
+          "total_time_ns": 18647154
+        },
+        {
+          "instances": 1440,
+          "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::CUDAFunctor_add<float>, std::array<char *, (unsigned long)3>>(int, T2, T3)",
+          "total_time_ns": 10309133
+        },
+        {
+          "instances": 750,
+          "name": "void at::native::<unnamed>::layer_norm_grad_input_kernel_vectorized<float, float, (bool)0>(const T1 *, const T1 *, const T2 *, const T2 *, const T1 *, T1 *, int)",
+          "total_time_ns": 9664969
+        },
+        {
+          "instances": 750,
+          "name": "void at::native::<unnamed>::GammaBetaBackwardCUDAKernelTemplate<float, float, (unsigned int)32, (unsigned int)32, (unsigned int)256, (bool)0, (bool)1, (bool)0>(long, long, const T1 *, const T1 *, const T2 *, const T2 *, T1 *, T1 *)",
+          "total_time_ns": 7129662
+        },
+        {
+          "instances": 750,
+          "name": "void at::native::<unnamed>::vectorized_layer_norm_kernel<float, float, (bool)0>(int, T2, const T1 *, const T1 *, const T1 *, T2 *, T2 *, T1 *)",
+          "total_time_ns": 6422137
+        },
+        {
+          "instances": 360,
+          "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::GeluCUDAKernelImpl(at::TensorIteratorBase &, at::native::GeluType)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>>(int, T2, T3)",
+          "total_time_ns": 4412048
+        },
+        {
+          "instances": 360,
+          "name": "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)3, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+          "total_time_ns": 3707416
+        },
+        {
+          "instances": 360,
+          "name": "void at::native::reduce_kernel<(int)512, (int)1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator ()(at::TensorIterator &)::[lambda(float, float) (instance 1)]>, unsigned int, float, (int)4, (int)4>>(T3)",
+          "total_time_ns": 3164874
+        },
+        {
+          "instances": 60,
+          "name": "void at::native::<unnamed>::embedding_backward_feature_kernel<float, float, long>(const T3 *, const T1 *, T1 *, int, long, int)",
+          "total_time_ns": 2964490
+        },
+        {
+          "instances": 360,
+          "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float>>, std::array<char *, (unsigned long)3>>(int, T2, T3)",
+          "total_time_ns": 1896164
+        },
+        {
+          "instances": 360,
+          "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<unsigned char>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+          "total_time_ns": 1080611
+        },
+        {
+          "instances": 60,
+          "name": "void at::native::vectorized_gather_kernel<(int)16, long>(char *, char *, T2 *, int, long, long, long, long, bool)",
+          "total_time_ns": 648516
+        },
+        {
+          "instances": 30,
+          "name": "void at::native::<unnamed>::nll_loss_forward_reduce_cuda_kernel_2d<float, float, long>(T1 *, T1 *, const T1 *, const T3 *, const T1 *, bool, long, long, long, long)",
+          "total_time_ns": 391745
+        },
+        {
+          "instances": 30,
+          "name": "void at::native::<unnamed>::nll_loss_backward_reduce_cuda_kernel_2d<float, long>(T1 *, const T1 *, const T2 *, const T1 *, const T1 *, bool, int, int, long, long)",
+          "total_time_ns": 260834
+        },
+        {
+          "instances": 30,
+          "name": "void at::native::reduce_kernel<(int)128, (int)4, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator ()(at::TensorIterator &)::[lambda(float, float) (instance 1)]>, unsigned int, float, (int)4, (int)4>>(T3)",
+          "total_time_ns": 241859
+        },
+        {
+          "instances": 31,
+          "name": "void <unnamed>::elementwise_kernel_with_index<int, at::native::arange_cuda_out(const c10::Scalar &, const c10::Scalar &, const c10::Scalar &, at::Tensor &)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 4)]::operator ()() const::[lambda(long) (instance 1)]>(T1, T2, function_traits<T2>::result_type *)",
+          "total_time_ns": 36928
+        },
+        {
+          "instances": 1,
+          "name": "void at::native::triu_tril_kernel<bool, int, (bool)1, (int)8, (bool)0>(at::cuda::detail::TensorInfo<T1, T2>, at::cuda::detail::TensorInfo<const T1, T2>, long, long, T2)",
+          "total_time_ns": 2656
+        },
+        {
+          "instances": 1,
+          "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<bool>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+          "total_time_ns": 1632
+        }
+      ],
+      "percent_kernel_time": 34.364686692804916,
+      "total_time_ns": 630994246
+    }
+  },
+  "classification_rules": [
+    {
+      "category": "fused_adamw",
+      "regex": "FusedAdamMathFunctor|multi_tensor_apply_kernel"
+    },
+    {
+      "category": "gemm",
+      "regex": "cutlass|gemm|cublas|matmul"
+    },
+    {
+      "category": "attention",
+      "regex": "flash|scaled_dot_product|fmha"
+    },
+    {
+      "category": "copy_cast",
+      "regex": "bfloat16_copy|copy_kernel|cast"
+    }
+  ],
+  "method_notes": [
+    "All percentages use total CUDA kernel time, not wall-clock time.",
+    "Unmatched kernel time is deliberately retained as unclassified.",
+    "Only explicit FusedAdamMathFunctor/multi_tensor_apply_kernel names are labelled fused_adamw.",
+    "Do not infer an unfused AdamW total from generic elementwise kernel names alone."
+  ],
+  "schema_version": 1,
+  "source_csv": "profile/cuda_gpu_kern_sum_cuda_gpu_kern_sum.csv",
+  "source_csv_sha256": "abba42dc4e40b6cc5f91260c206965a815a53552c047ab9c72baf2ec1143a20f",
+  "top_kernels": [
+    {
+      "instances": 1470,
+      "name": "void cutlass::Kernel2<cutlass_80_tensorop_s1688gemm_64x64_16x6_tn_align4>(T1::Params)",
+      "total_time_ns": 293033890
+    },
+    {
+      "instances": 1440,
+      "name": "void cutlass::Kernel2<cutlass_80_tensorop_s1688gemm_64x64_16x6_nt_align4>(T1::Params)",
+      "total_time_ns": 216313533
+    },
+    {
+      "instances": 360,
+      "name": "fmha_cutlassB_f32_aligned_64x64_k64_sm80(PyTorchMemEffAttention::AttentionBackwardKernel<cutlass::arch::Sm80, float, (bool)1, (bool)0, (bool)0, (int)64, (int)64, (int)64, (bool)0>::Params)",
+      "total_time_ns": 169178952
+    },
+    {
+      "instances": 1080,
+      "name": "void cutlass::Kernel2<cutlass_80_tensorop_s1688gemm_64x64_16x6_nn_align4>(T1::Params)",
+      "total_time_ns": 140613990
+    },
+    {
+      "instances": 6060,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::AUnaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float>>, std::array<char *, (unsigned long)2>>(int, T2, T3)",
+      "total_time_ns": 101961143
+    },
+    {
+      "instances": 30,
+      "name": "void cutlass::Kernel2<cutlass_80_tensorop_s1688gemm_128x128_16x5_nn_align4>(T1::Params)",
+      "total_time_ns": 87076258
+    },
+    {
+      "instances": 3030,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::<unnamed>::lerp_scalar_kernel(at::TensorIteratorBase &, const c10::Scalar &)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float, float) (instance 1)], std::array<char *, (unsigned long)3>>(int, T2, T3)",
+      "total_time_ns": 86939262
+    },
+    {
+      "instances": 30,
+      "name": "void cutlass::Kernel2<cutlass_80_tensorop_s1688gemm_256x128_16x3_nt_align4>(T1::Params)",
+      "total_time_ns": 84002415
+    },
+    {
+      "instances": 360,
+      "name": "void cutlass::Kernel2<cutlass_80_tensorop_s1688gemm_128x128_16x4_nn_align4>(T1::Params)",
+      "total_time_ns": 76309897
+    },
+    {
+      "instances": 420,
+      "name": "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 3)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float) (instance 1)]>(at::TensorIteratorBase &, const T1 &)::[lambda(int) (instance 1)]>(int, T3)",
+      "total_time_ns": 74847276
+    },
+    {
+      "instances": 3030,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::addcdiv_cuda_kernel(at::TensorIteratorBase &, const c10::Scalar &)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float, float, float) (instance 1)], std::array<char *, (unsigned long)4>>(int, T2, T3)",
+      "total_time_ns": 68553935
+    },
+    {
+      "instances": 30,
+      "name": "void at::native::<unnamed>::cunn_SoftMaxBackward<(int)4, float, float, float, at::native::<unnamed>::LogSoftMaxBackwardEpilogue>(T2 *, const T4 *, const T4 *, long)",
+      "total_time_ns": 64140759
+    },
+    {
+      "instances": 360,
+      "name": "fmha_cutlassF_f32_aligned_64x64_rf_sm80(PyTorchMemEffAttention::AttentionKernel<float, cutlass::arch::Sm80, (bool)1, (int)64, (int)64, (int)64, (bool)1, (bool)1>::Params)",
+      "total_time_ns": 63505501
+    },
+    {
+      "instances": 3030,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::addcmul_cuda_kernel(at::TensorIteratorBase &, const c10::Scalar &)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float, float, float) (instance 1)], std::array<char *, (unsigned long)4>>(int, T2, T3)",
+      "total_time_ns": 53439657
+    },
+    {
+      "instances": 352,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<float>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "total_time_ns": 38986030
+    },
+    {
+      "instances": 30,
+      "name": "void at::native::<unnamed>::cunn_SoftMaxForward<(int)4, float, float, float, at::native::<unnamed>::LogSoftMaxForwardEpilogue>(T4 *, const T2 *, int)",
+      "total_time_ns": 37106626
+    },
+    {
+      "instances": 3030,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::sqrt_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>>(int, T2, T3)",
+      "total_time_ns": 36837224
+    },
+    {
+      "instances": 3030,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::BUnaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float>>, std::array<char *, (unsigned long)2>>(int, T2, T3)",
+      "total_time_ns": 36273888
+    },
+    {
+      "instances": 3030,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::CUDAFunctorOnSelf_add<float>, std::array<char *, (unsigned long)2>>(int, T2, T3)",
+      "total_time_ns": 35772894
+    },
+    {
+      "instances": 360,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::GeluBackwardCUDAKernelImpl(at::TensorIteratorBase &, at::native::GeluType)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float, float) (instance 1)], std::array<char *, (unsigned long)3>>(int, T2, T3)",
+      "total_time_ns": 18647154
+    },
+    {
+      "instances": 1440,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::CUDAFunctor_add<float>, std::array<char *, (unsigned long)3>>(int, T2, T3)",
+      "total_time_ns": 10309133
+    },
+    {
+      "instances": 750,
+      "name": "void at::native::<unnamed>::layer_norm_grad_input_kernel_vectorized<float, float, (bool)0>(const T1 *, const T1 *, const T2 *, const T2 *, const T1 *, T1 *, int)",
+      "total_time_ns": 9664969
+    },
+    {
+      "instances": 750,
+      "name": "void at::native::<unnamed>::GammaBetaBackwardCUDAKernelTemplate<float, float, (unsigned int)32, (unsigned int)32, (unsigned int)256, (bool)0, (bool)1, (bool)0>(long, long, const T1 *, const T1 *, const T2 *, const T2 *, T1 *, T1 *)",
+      "total_time_ns": 7129662
+    },
+    {
+      "instances": 750,
+      "name": "void at::native::<unnamed>::vectorized_layer_norm_kernel<float, float, (bool)0>(int, T2, const T1 *, const T1 *, const T1 *, T2 *, T2 *, T1 *)",
+      "total_time_ns": 6422137
+    },
+    {
+      "instances": 360,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::GeluCUDAKernelImpl(at::TensorIteratorBase &, at::native::GeluType)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>>(int, T2, T3)",
+      "total_time_ns": 4412048
+    },
+    {
+      "instances": 360,
+      "name": "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)3, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+      "total_time_ns": 3707416
+    },
+    {
+      "instances": 360,
+      "name": "void at::native::reduce_kernel<(int)512, (int)1, at::native::ReduceOp<float, at::native::func_wrapper_t<float, at::native::sum_functor<float, float, float>::operator ()(at::TensorIterator &)::[lambda(float, float) (instance 1)]>, unsigned int, float, (int)4, (int)4>>(T3)",
+      "total_time_ns": 3164874
+    },
+    {
+      "instances": 60,
+      "name": "void at::native::<unnamed>::embedding_backward_feature_kernel<float, float, long>(const T3 *, const T1 *, T1 *, int, long, int)",
+      "total_time_ns": 2964490
+    },
+    {
+      "instances": 360,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float>>, std::array<char *, (unsigned long)3>>(int, T2, T3)",
+      "total_time_ns": 1896164
+    },
+    {
+      "instances": 360,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<unsigned char>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "total_time_ns": 1080611
+    }
+  ],
+  "total_kernel_instances": 36355,
+  "total_kernel_time_ns": 1836170519
+}
