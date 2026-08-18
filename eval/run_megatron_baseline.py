@@ -28,7 +28,7 @@ def init_distributed(tp, pp):
     )
 
 
-def build_model(tp, pp, use_bf16=False, no_scaled_init=False):
+def build_model(tp, pp, use_bf16=False, no_scaled_init=False, fair_config=False):
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
 
@@ -54,6 +54,9 @@ def build_model(tp, pp, use_bf16=False, no_scaled_init=False):
         tp_comm_overlap=True,
         attention_dropout=0.0,
         hidden_dropout=0.0,
+        # mini-megatron's projection, QKV and MLP layers are bias-free.  This
+        # flag creates the same parameter contract for semantic-parity audits.
+        add_bias_linear=not fair_config,
         output_layer_init_method=output_layer_init_method,
     )
     pp_rank = parallel_state.get_pipeline_model_parallel_rank()
@@ -117,6 +120,8 @@ def main():
     parser.add_argument("--compile", action="store_true", help="Wrap model in torch.compile")
     parser.add_argument("--data-file", type=str, default=None)
     parser.add_argument("--no-scaled-init", action="store_true", help="Use std=0.02 for output layer (matches input layer init)")
+    parser.add_argument("--fair-config", action="store_true",
+                        help="Use mini-megatron's bias-free GPT parameter contract; required for parity experiments.")
     args = parser.parse_args()
 
     tp, pp = args.tp, args.pp
@@ -133,7 +138,8 @@ def main():
     init_distributed(tp, pp)
     model_parallel_cuda_manual_seed(42)
 
-    model, config = build_model(tp, pp, use_bf16=args.amp, no_scaled_init=args.no_scaled_init)
+    model, config = build_model(tp, pp, use_bf16=args.amp, no_scaled_init=args.no_scaled_init,
+                                fair_config=args.fair_config)
     model.cuda()
     if args.compile:
         model = torch.compile(model)

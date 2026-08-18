@@ -2,9 +2,36 @@
 
 > mini-megatron 的所有性能数据怎么读、怎么复现、怎么扩展。
 
+> 实验口径：本页的历史表格是 legacy evidence。新的性能结论必须遵守
+> [可信实验协议](experiment-protocol.md)：配置等价、至少五个配对重复、保存
+> manifest 与原始 Nsight 产物。
+
 ---
 
-## 零、最新数据（2026-08-11）：fused AdamW
+## 零、最新受控证据（2026-08-17，暂定）
+
+最新 L20 会话已完成 5 组交替配对、GPU 空闲预检、run bundle 校验和 Nsight
+原始产物归档：
+
+- **公平 TP=1 FP32 对比**：同权重转换、同一 230 个固定 next-token batch、同一
+  无 bias GPT 合同、标准 AdamW、5 个交替配对，mini/MCore 配对均值为
+  **1.181404x**（范围 1.179417-1.184017；mini 32,657，MCore 27,642.6 tok/s）。
+  此结果仅适用于该精确的单卡 FP32 合同，且因 dirty tree 仍是暂定证据。
+- 旧的 mini fused 对仓库 Megatron-Core custom-loop baseline 2.289x 测量没有共享
+  权重、固定输入或相同前向图，现仅保留为脚本端到端开销的诊断记录，**不可解读为
+  框架性能胜负**。
+- mini fused 对 mini unfused：**+17.08%**（1.1708x 配对均值；5 组）。
+- 正确的 L20 容器完整测试：**38 passed in 11.51s**。
+
+这些运行使用了尚未提交的实验工具，因此 manifest 标记为
+source_tree_clean=false；它们是可复核的**暂定证据**，不是发布结论。完整
+环境、逐项统计、原始 .nsys-rep/SQLite 路径与 SHA-256、以及重新跑成发布级
+证据的步骤见 [2026-08-17 evidence ledger](experiment-results-2026-08-17.md)。
+该 custom-loop baseline 不构成“mini-megatron 普遍快于 Megatron”的主张；重跑前
+必须完成同权重、同输入、同语义的一步校验。
+BF16 目前没有通过同一数值门槛，不能与 FP32 公平结论混写。
+
+## 一、历史数据（2026-08-11）：fused AdamW
 
 ### 50 步 benchmark（4×L20 48GB, BF16）
 
@@ -20,7 +47,7 @@
 
 ---
 
-## 一、历史数据（2026-07-24）
+## 二、历史数据（2026-07-24）
 
 ### 50 步快速 benchmark（4×L20 48GB）
 
@@ -47,7 +74,7 @@
 
 ---
 
-## 二、怎么读这些数据
+## 三、怎么读这些数据
 
 ### "tok/s" 是什么
 每秒处理的 token 数。`B × S × num_steps / elapsed`
@@ -85,21 +112,15 @@ mfu = flops_per_step × num_steps × dp_w / (elapsed × 110e12 × gpu_world)
 
 ---
 
-## 三、复现数据
+## 四、复现数据
 
-### 50 步 benchmark
+### 受控 benchmark（替代手工 50 步样本）
 
 ```bash
-cd <repo-root>
-
-# mini-megatron TP=1 PP=1
-torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 --num-steps 50
-
-# mini-megatron TP=1 PP=1 BF16
-torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 --num-steps 50 --amp
-
-# Megatron-Core TP=1 PP=1
-torchrun --nproc_per_node=1 eval/run_megatron_baseline.py --tp 1 --pp 1 --num-steps 50
+python3 experiments/run_experiment.py --name mini-125m-tp1-fused-r01 \
+  --tag variant=mini --tag pair=01 --tag condition=125m-s512-b4-bf16-fused-200x30 -- \
+  torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 --num-steps 200 \
+  --warmup-steps 30 --micro-batch-size 4 --amp --fused
 ```
 
 ### 50 步 benchmark（fused AdamW）
@@ -133,33 +154,30 @@ python3 experiments/compare_convergence.py --data-file experiments/identity_data
 ### 自动化所有 benchmark
 
 ```bash
-# TODO: 一键跑所有 benchmark
-# 当前需要手动跑每条
+# 每个命令独立生成一个 run bundle。按 ABBA/BAAB 顺序运行五对，再汇总：
+python3 experiments/summarize_paired_results.py --results-dir results/runs \
+  --left mini --right megatron --output results/aggregates/125m-tp1.json
 ```
 
 ---
 
-## 四、怎么保存新数据
+## 五、怎么保存新数据
 
 跑完新 benchmark 后：
 
 ```bash
-# 1. 把数据更新到 results/identity_2000steps.json
-#    格式在 tests/test_identity_results.py 里有
+# 1. 先验证每个 bundle，再生成 aggregate（不能挑最快样本）
+python3 experiments/validate_run_bundle.py results/runs/<run-id>
 
-# 2. 更新 README 表格
+# 2. 保存 manifest、环境、命令、CSV、checksums 和分析 JSON；
+#    .nsys-rep/.sqlite 留在不可变归档或 Git LFS，并记录 URI、大小、SHA-256。
 
-# 3. 在 benchmarks.md（本文档）加新的测试条件
-
-# 4. 提交
-git add results/ README.md dev-guides/mini-megatron/benchmarks.md
-git commit -m "docs: update benchmark with new test conditions"
-git push origin main
+# 3. 只有 clean-tree、至少五个配对和语义等价检查完成后，才更新 README 摘要。
 ```
 
 ---
 
-## 五、添加新 benchmark
+## 六、添加新 benchmark
 
 需要测试新场景（如 7B 模型、不同 batch size、新硬件）时：
 
@@ -182,7 +200,7 @@ torchrun --nproc_per_node=4 main.py --tp 2 --pp 2 --num-steps 100
 
 ---
 
-## 六、已知问题
+## 七、已知问题
 
 - Megatron-Core baseline 在 BF16 模式下吞吐和 FP32 一样（`16,408 vs 16,479 tok/s`），因为 `Float16Module` 包装在小模型上开销 > 收益
 - 2000 步对比中 Megatron 到 2000 步 loss=0.30 还没完全收敛，再跑 5000 步可能更好
@@ -191,7 +209,7 @@ torchrun --nproc_per_node=4 main.py --tp 2 --pp 2 --num-steps 100
 
 ---
 
-## 七、性能调优指南
+## 八、性能调优指南
 
 发现 mini-megatron 慢时按这个顺序排查：
 

@@ -1,10 +1,8 @@
-"""Validate the identity-task training results from results/identity_2000steps.json.
+"""Validate schema of the legacy identity-task observation.
 
-This test verifies:
-1. Results file exists
-2. Both frameworks have loss curves
-3. Both frameworks converged (final loss << initial)
-4. mini-megatron converges significantly faster than Megatron-Core
+Identity loss is a wiring smoke test, not a framework-quality comparison.
+Performance claims require a reproducible run bundle under the experiment
+protocol instead of a permanent unit-test oracle.
 """
 import json
 import os
@@ -32,65 +30,14 @@ def test_results_format():
     assert len(data["results"]["megatron_core"]) > 10
 
 
-def test_mini_megatron_converges():
-    """mini-megatron should drop loss from ~10 to near 0 in 2000 steps."""
+def test_loss_curves_have_numeric_monotonic_steps():
+    """Legacy curves remain parseable observations without ranking frameworks."""
     with open(RESULTS_PATH) as f:
         data = json.load(f)
-    curve = data["results"]["mini_megatron"]
-    first_loss = curve[0]["loss"]
-    last_loss = curve[-1]["loss"]
-    # mini-megatron should converge to near-zero on the identity task
-    assert first_loss > 5.0, f"First loss should be high (random), got {first_loss}"
-    assert last_loss < 0.1, f"Final loss should be <0.1, got {last_loss}"
-    # Should reach low loss well before step 2000
-    early = next(d for d in curve if d["step"] >= 200)
-    assert early["loss"] < 0.5, f"Loss at step 200 should be <0.5, got {early['loss']}"
-
-
-def test_megatron_core_converges():
-    """Megatron-Core should also converge to low loss in 2000 steps."""
-    with open(RESULTS_PATH) as f:
-        data = json.load(f)
-    curve = data["results"]["megatron_core"]
-    first_loss = curve[0]["loss"]
-    last_loss = curve[-1]["loss"]
-    assert first_loss > 5.0, f"First loss should be high (random), got {first_loss}"
-    # Megatron converges more slowly but should still reach low loss by step 2000
-    assert last_loss < 0.5, f"Final loss should be <0.5, got {last_loss}"
-
-
-def test_mini_faster_than_megatron():
-    """At any given step, mini-megatron should have lower loss than Megatron-Core."""
-    with open(RESULTS_PATH) as f:
-        data = json.load(f)
-    mini = {d["step"]: d["loss"] for d in data["results"]["mini_megatron"]}
-    base = {d["step"]: d["loss"] for d in data["results"]["megatron_core"]}
-    # Compare at matching steps
-    common_steps = sorted(set(mini.keys()) & set(base.keys()))
-    assert len(common_steps) >= 10
-    for step in common_steps:
-        assert mini[step] < base[step], (
-            f"mini-megatron loss {mini[step]:.4f} should be < "
-            f"Megatron loss {base[step]:.4f} at step {step}"
-        )
-
-
-def test_mini_faster_by_significant_margin():
-    """mini-megatron should converge ~5x faster (reaching loss 0.01 much earlier)."""
-    with open(RESULTS_PATH) as f:
-        data = json.load(f)
-    mini = data["results"]["mini_megatron"]
-    base = data["results"]["megatron_core"]
-
-    # Find the step where mini first reaches loss < 0.05
-    mini_target = next((d["step"] for d in mini if d["loss"] < 0.05), None)
-    assert mini_target is not None, "mini-megatron never reached loss < 0.05"
-
-    # Find the step where Megatron first reaches loss < 0.05 (if ever)
-    base_target = next((d["step"] for d in base if d["loss"] < 0.05), None)
-    if base_target is not None:
-        ratio = base_target / mini_target
-        assert ratio >= 3, (
-            f"mini-megatron reached loss 0.05 at step {mini_target}, "
-            f"Megatron at step {base_target}, ratio={ratio:.1f}x (expected >= 3x)"
-        )
+    for name, curve in data["results"].items():
+        assert len(curve) > 10, name
+        steps = [point["step"] for point in curve]
+        losses = [point["loss"] for point in curve]
+        assert all(isinstance(step, int) and step > 0 for step in steps)
+        assert steps == sorted(steps) and len(set(steps)) == len(steps)
+        assert all(isinstance(loss, (int, float)) and loss >= 0 for loss in losses)

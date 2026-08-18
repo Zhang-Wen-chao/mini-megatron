@@ -3,12 +3,28 @@
 > 工具实践 | mini-megatron 性能调优记录
 > 环境：4×NVIDIA L20 (48GB, GDDR6 @ 864GB/s) · NGC PyTorch 26.01 · 单卡 125M GPT · BF16
 
+> **2026-08-17 复核说明**：本文下方的 45.2% unfused AdamW 归因和 50 步表格是
+> 历史记录，不能把它们和新的 profile 混为一谈。新的原始 .nsys-rep、SQLite、
+> CSV、SHA-256 和保守重分析都已归档在
+> [2026-08-17 evidence ledger](experiment-results-2026-08-17.md)。新分析只将显式
+> FusedAdamMathFunctor / multi_tensor_apply_kernel 归为 fused AdamW：fused
+> capture 为 432.31 ms（450 次，26.32% GPU kernel time）；unfused capture 的
+> 通用 elementwise kernel 保留为 unclassified，**不再声称新的 trace 独立证明
+> 45.2% unfused AdamW**。所有百分比都是 kernel time，不是 wall-clock。
+
+> **跨框架表格复核**：本文后面的 2.10x/2.28x 表格是历史、非等价脚本测量，已
+> 撤回为 mini-megatron vs Megatron-Core 的性能结论。两边没有共享转换后的权重、
+> 固定 token/label batch 或相同前向图；相同 shape、optimizer 名称和 MFU 公式并不
+> 足以使比较公平。保留表格仅供追溯，替代实验要求见
+> [experiment protocol](experiment-protocol.md)。
+
 ## 背景
 
 最近在给面试做准备（方向：AI 框架/分布式训练性能优化），把个人项目 mini-megatron（800 行纯 PyTorch 实现的 Megatron 并行策略）拿出来做一次正经的性能剖析。基线数据（单卡 125M，BF16）：
 
 - **吞吐 51,700 tok/s，MFU 36.2%**
-- 对比 Megatron-Core 同配置 11.48% MFU，已经快 1.6-2.4 倍
+- 历史表格曾把它与 Megatron-Core 相比并写成 1.6-2.4 倍；该比较已在本文开头
+  标记为非等价历史记录，不能作为速度结论
 - 但对照 NVIDIA 参考（H100 47%），36.2% 仍有提升空间
 
 任务：用 NVIDIA 官方工具链（Nsight Systems / Nsight Compute）找出这 68% 的算力浪费在哪，并落地优化。
@@ -142,7 +158,7 @@ optimizer = AdamW(model.parameters(), lr=cfg.LEARNING_RATE,
 > 使用 `experiments/identity_data.pt`（预生成、加载后不再消耗 RNG），unfused/fused 各跑一遍，逐 step 对比 loss。
 > fused kernel 内部归约顺序与 unfused 略有不同，训练早期（loss 尚未饱和）逐位一致；随步数增加浮点噪声累积到 ~1e-4，属正常数值噪声，不影响收敛。面试表述：**"数值等价，非位级一致"**。
 
-### vs Megatron-Core：fused 都打开还快吗？（2026-08-11 公平对比）
+### vs Megatron-Core：历史脚本测量（2026-08-11，非等价）
 
 之前的对比只测了 Megatron-Core 的默认配置。为了公平，给 `eval/run_megatron_baseline.py` 也加了 `--fused`，两个框架各自 unfused/fused 交替 2 轮（同一天、BF16、TP=1、50 步+10 warmup）：
 
@@ -153,10 +169,11 @@ optimizer = AdamW(model.parameters(), lr=cfg.LEARNING_RATE,
 | Megatron-Core unfused | 24,696 | 24,626 | 24,661 | 2.10x |
 | Megatron-Core fused | 26,694 | 26,587 | 26,641 | **2.28x** |
 
-结论：
-- **mini-megatron 快 2.1x 起步，fused 都打开时快 2.28x**；
+历史记录（已撤回为跨框架性能结论）：
+- 该组脚本测得的比值为 2.10x 和 2.28x，不能解释为 mini-megatron 更快；
 - Megatron-Core 开 fused 只 +8%（24.7k→26.6k），因为它的瓶颈不在优化器（Float16Module 包装、层实现开销占主导），fused 治不了它的病；
-- 两个脚本用**完全相同的 MFU 公式和吞吐定义**（`B×S×steps/elapsed`），同日交替测量，对比公平；
+- 两个脚本用了相同的 MFU 公式和吞吐定义（`B×S×steps/elapsed`），但未达到
+  同权重、同输入、同语义，**对比不公平**；
 - 注意：Megatron-Core 绝对吞吐比 2026-07-24 记录（16.4k）高了 ~50%，环境/版本变化所致，跨日期不可比，只能比同日相对值。
 
 ### 多卡验证（交替复测，同条件）
@@ -192,9 +209,10 @@ nsys 验证 compile 的效果来源：
 
 这个结果本身是结论的一部分：**mini-megatron 的纯 torch.nn 结构对 torch.compile 友好（秒级编译），Megatron-Core 的复杂自定义算子（FusedLayerNorm、ColumnParallelLinear 等）触发了编译死锁**——轻量实现反而在工具链兼容性上占优。
 
-跨框架对比的口径（如实表述）：
-- 两边都不 compile：mini 快 **2.10x**（unfused）、**2.28x**（都 fused）
-- mini 全开（fused+compile）vs Megatron 默认：约 **2.73x**（67,335 ÷ 24,661）
+跨框架历史记录的正确口径：
+- 两边都不 compile 时，旧脚本测得 2.10x（unfused）、2.28x（都 fused），均非
+  公平的框架比较。
+- mini 全开（fused+compile）vs Megatron 默认的 2.73x 同样不应作为性能结论。
 - "两边都全开"：**无法完成**，Megatron-Core 开 compile 挂死
 
 ## 剩余瓶颈与下一步

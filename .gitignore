@@ -14,3 +14,8 @@ build/
 .hypothesis/
 .coverage
 htmlcov/
+
+# Raw profiler evidence belongs in the experiment archive, not normal Git.
+results/runs/**/*.nsys-rep
+results/runs/**/*.sqlite
+results/runs/**/profile/analysis.json

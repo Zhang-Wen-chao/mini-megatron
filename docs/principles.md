@@ -1,6 +1,8 @@
 # 设计原则
 
-> mini-megatron 为什么是 ~800 行、为什么纯 PyTorch、为什么 1.6-2.4x 快于 Megatron-Core。这些设计的权衡和理由。
+> mini-megatron 为什么是 ~800 行、为什么纯 PyTorch，以及这些设计的权衡和理由。
+> 历史的 1.6-2.4x 跨框架表格不具备同权重、同输入和同语义条件，不能作为
+> “快于 Megatron-Core”的结论。
 
 ---
 

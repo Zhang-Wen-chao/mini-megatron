@@ -12,8 +12,22 @@ the four most-used parallel strategies with 0.3% of the code.
 
 This is **not a production framework**. It's a learning artifact that:
 - Works end-to-end (TP/PP/DP/AMP all wired and tested)
-- Achieves 1.6-2.4x Megatron-Core's throughput on 125M models
+- Includes a provisional diagnostic comparison against a Megatron-Core
+  custom-loop baseline; it is not a same-model performance verdict
 - Fits in one sitting so the entire training loop is readable
+
+The performance tables are scoped microbenchmarks, not a claim that this project
+is a general replacement for Megatron-Core. New measurements follow the
+[credible experiment protocol](docs/experiment-protocol.md).
+The latest L20 evidence, retained profiler artifacts, and its limitations are in
+[the 2026-08-17 evidence ledger](docs/experiment-results-2026-08-17.md).
+
+The current most comparable result is deliberately narrow: under a shared,
+bias-free 125M TP=1 FP32 contract with converted identical weights, fixed
+next-token batches, standard AdamW, and five alternating pairs, mini recorded
+a provisional 1.1814x throughput ratio relative to the matching Megatron-Core
+path. It is not a general framework claim; BF16 did not pass the same numerical
+equivalence gate and is reported separately rather than folded into this result.
 
 For more complete coverage (ZeRO-1, Sequence Parallelism, 1F1B interleaved, etc.),
 see [Nano-Megatron](https://github.com/pyy233/Nano-Megatron) (~50K lines, production-grade).
@@ -212,7 +226,15 @@ TP=1 PP=4 |  (deadlocks: serial only supports pp=2)  |  45,854 tok/s |  8.00% MF
 > micro-batch gets its backward on every stage (serial skipped the first
 > `pp-rank-1` backwards on stage 0).
 
-### vs Megatron-Core (2026-08-11, strict A/B, 50 steps, same MFU formula)
+### vs Megatron-Core (2026-08-11, historical non-equivalent diagnostic)
+
+> **Withdrawn as a framework-performance claim (2026-08-17).** Although these
+> scripts used the same nominal shape and throughput formula, they did not share
+> converted weights, fixed input batches, or an equivalent forward graph. The
+> values below document the old scripts' total step cost only; they are not a
+> fair mini-megatron vs Megatron-Core comparison. See
+> [the evidence ledger](docs/experiment-results-2026-08-17.md) for the required
+> replacement protocol.
 
 Same day, alternating rounds, BF16, TP=1 PP=1, both frameworks with and without `--fused`:
 
@@ -221,10 +243,10 @@ Same day, alternating rounds, BF16, TP=1 PP=1, both frameworks with and without 
 | unfused | 51,841 tok/s (36.3% MFU) | 24,661 tok/s (17.3% MFU) | **2.10x** |
 | fused | 60,754 tok/s (42.5% MFU) | 26,641 tok/s (18.6% MFU) | **2.28x** |
 
-> Both scripts use the identical MFU formula and throughput definition
-> (`B × S × steps / elapsed`), measured back-to-back in alternating rounds.
-> mini-megatron stays ~2.1x faster even when Megatron-Core also enables fused
-> AdamW (fused only helps it +8%, because its bottleneck is not the optimizer).
+> Both scripts used the identical MFU formula and throughput definition
+> (`B × S × steps / elapsed`) and were measured in alternating rounds. Those
+> controls do **not** compensate for the missing model/input/semantic parity, so
+> no speed advantage may be inferred from this table.
 >
 > Note on `--compile`: mini-megatron compiles in seconds, but Megatron-Core
 > deadlocks during torch.compile (stuck at 4 compiled kernels, CPU 0%, in two
