@@ -40,6 +40,8 @@ def main():
     parser.add_argument("--warmup-updates", type=int, default=30)
     parser.add_argument("--microbatches-per-update", type=int, default=8)
     parser.add_argument("--report-losses", action="store_true")
+    parser.add_argument("--phase-timing-output", type=Path,
+                        help="Optional JSON output for low-perturbation CUDA Event phase totals.")
     parser.add_argument("--progress-interval", type=int, default=0,
                         help="Rank-0 progress cadence in optimizer updates; 0 disables progress logs.")
     args = parser.parse_args()
@@ -70,6 +72,22 @@ def main():
     attention = torch.triu(torch.ones(sequence_length, sequence_length, dtype=torch.bool, device=device), diagonal=1).unsqueeze(0).unsqueeze(0)
     optimizer = torch.optim.AdamW(model.parameters(), lr=6e-4, weight_decay=0.1, betas=(0.9, 0.999), fused=False)
     losses = []
+    phase_names = ("forward", "loss_vocab", "backward", "optimizer")
+    # Do not time warmup.  CUDA Event records are deliberately enabled only
+    # for the measured interval, so the reported event count has the same
+    # denominator as ``num_updates``.
+    phase_events = None
+
+    def mark_phase(name, callback):
+        if phase_events is None:
+            return callback()
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+        start_event.record()
+        result = callback()
+        end_event.record()
+        phase_events[name].append((start_event, end_event))
+        return result
 
     def update(update_index):
         optimizer.zero_grad(set_to_none=True)
@@ -79,12 +97,17 @@ def main():
             tokens = input_ids[base + microbatch].to(device, non_blocking=True)
             target = labels[base + microbatch].to(device, non_blocking=True)
             if args.implementation == "mini":
-                logits = model(tokens)
+                logits = mark_phase("forward", lambda: model(tokens))
             else:
-                logits = model(tokens, position_ids=positions, attention_mask=attention)
-            last_loss = torch.nn.functional.cross_entropy(logits[:, :-1].reshape(-1, vocab_size), target[:, :-1].reshape(-1))
-            (last_loss / args.microbatches_per_update).backward()
-        optimizer.step()
+                logits = mark_phase("forward", lambda: model(tokens, position_ids=positions, attention_mask=attention))
+            last_loss = mark_phase(
+                "loss_vocab",
+                lambda: torch.nn.functional.cross_entropy(
+                    logits[:, :-1].reshape(-1, vocab_size), target[:, :-1].reshape(-1),
+                ),
+            )
+            mark_phase("backward", lambda: (last_loss / args.microbatches_per_update).backward())
+        mark_phase("optimizer", optimizer.step)
         losses.append(float(last_loss.item()))
         return last_loss
 
@@ -92,6 +115,8 @@ def main():
     for update_index in range(args.warmup_updates):
         update(update_index)
     torch.cuda.synchronize()
+    if args.phase_timing_output:
+        phase_events = {name: [] for name in phase_names}
     torch.cuda.reset_peak_memory_stats(device)
     start = time.perf_counter()
     loss = None
@@ -111,6 +136,31 @@ def main():
             }, sort_keys=True), flush=True)
     torch.cuda.synchronize()
     elapsed = time.perf_counter() - start
+    phase_report = None
+    if phase_events is not None:
+        phase_report = {
+            name: {
+                "milliseconds_total": sum(begin.elapsed_time(end) for begin, end in records),
+                "event_pairs": len(records),
+            }
+            for name, records in phase_events.items()
+        }
+        phase_report["rank"] = rank
+        phase_report["num_updates"] = args.num_updates
+        phase_report["microbatches_per_update"] = args.microbatches_per_update
+        gathered_phase_reports = [None for _ in range(dist.get_world_size())]
+        dist.all_gather_object(gathered_phase_reports, phase_report)
+        if rank == 0:
+            output = args.phase_timing_output.resolve()
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(json.dumps({
+                "schema_version": 1,
+                "purpose": "CUDA Event phase timing; profiler-free diagnostic, not a throughput substitute",
+                "implementation": args.implementation,
+                "topology": {"tp": 2, "pp": 1, "dp": 1},
+                "contract": CONTRACT,
+                "ranks": gathered_phase_reports,
+            }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if rank == 0:
         report = {"implementation": args.implementation, "contract": CONTRACT,
                   "topology": {"tp": 2, "pp": 1, "dp": 1}, "precision": "fp32",

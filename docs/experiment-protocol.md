@@ -56,8 +56,10 @@ URI、文件大小和 SHA-256。manifest、命令、环境、checksum、CSV 与�
 
 每一个固定输入 checkpoint、token 文件或数据 shard 都应通过 artifact 选项传入，使 manifest
 记录其字节大小和 SHA-256。相比只记录 random seed，这更可靠，因为不同框架的构建过程可能以
-不同顺序消耗 RNG。除非显式传入 allow-dirty，runner 会拒绝 dirty source tree；允许 dirty 的
-运行会在 manifest 中标记为 non-clean，不能作为主要发布证据。
+不同顺序消耗 RNG。除非显式传入 `allow-dirty`，runner 会拒绝工作树存在未提交改动的运行；
+允许该选项时，manifest 会保留 `source_tree_clean=false`。默认不应引用尚未固定代码快照的
+此类运行；若实验先发生，后续可将实际运行的关键源码、runner、contract 与测试文件逐一按
+内容 hash 核验并固定到一个提交，则可按报告的精确合同引用，并且必须公开原始状态与核验方法。
 
 kernel-summary analyzer 会在 profile/analysis.json 中记录 CSV SHA-256、regex 分类规则和所有
 未匹配 kernel 时间。百分比是 kernel time，不是 wall-clock。除非有可独立审计的归因规则，
@@ -141,13 +143,23 @@ campaign 配置、ledger 副本、aggregate、命令、环境快照、校验和�
 归档保留权重 shard、输入、全部 bundle 以及 `.nsys-rep/.sqlite` 原件。Git 中的原始 profile
 只能从未打开的副本提交；GUI 查看必须复制到仓库外，避免修改报告元数据。
 
+**证据链完整不等于原始数值门槛通过。**ledger 的每项证据带有 `claim_status`：只有四类
+证据都标为 `ordinary`，才允许无条件性能结论。若使用事后探索性校准，必须标为
+`conditional_exploratory`，并在汇总、结论和文档中同时保留原始 gate 未通过的事实、
+校准来源、适用范围和不支持的主张。此时 ledger 可以显示“证据链完整”，但只能形成条件性
+结论；不能因文件齐全就把后验校准改写为原计划门槛已通过。
+
 失败也必须保留，但不得混入结论：为每一次 smoke、接口错误或被替换的方案保存
 `diagnostics/<timestamp>-<topic>.json`（命令、stdout/stderr、触发条件、根因、后续修复
 commit），并用 `record --kind diagnostic` 登记 SHA-256。`diagnostic` 永远不会满足上面的
 发布门槛。这样项目能保留真实踩坑经验，同时不会把失败的临时实现伪装成公平实验资产。
 
-source_tree_clean=false（通过 --allow-dirty 创建）的 bundle 仅是临时证据。先提交 runner 与
-workload，再在 clean tree 上重跑配对实验，才可以更新 README 或 release 中的主结论。
+`source_tree_clean=false`（通过 `--allow-dirty` 创建）只记录运行开始时工作树有尚未提交的
+代码；它不表示 GPU、输入或测量结果被污染。默认仍应先提交 runner 与 workload，再运行实验。
+若实验先发生，后续可将实际运行的关键源码、runner、contract 与测试文件逐一按内容 hash 核验
+并固定到一个提交；报告必须同时保留原始 `source_tree_clean=false` 元数据、核验方法和固定
+commit。满足这些条件时，该 bundle 可以支持其精确合同内的结论；新的 clean-tree 独立复跑是
+增加重复性的推荐证据，而不是把已有受控数据自动判为无效的条件。
 
 一次 benchmark replicate 的例子：
 

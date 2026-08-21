@@ -143,6 +143,7 @@ def record(args):
         "source_sha256": sha256(source),
         "source_size_bytes": source.stat().st_size,
         "campaign_id": campaign["campaign_id"],
+        "claim_status": getattr(args, "claim_status", "ordinary"),
     }
     if args.note:
         entry["note"] = args.note
@@ -171,16 +172,25 @@ def validate(args):
     status = {}
     for topology in campaign["topologies"]:
         topology_id = topology["id"]
-        kinds = {data.get("kind") for _, data in records if data.get("topology") == topology_id}
+        topology_records = [data for _, data in records if data.get("topology") == topology_id]
+        kinds = {data.get("kind") for data in topology_records}
         required = {"artifact", "numerical_parity", "benchmark_summary", "profile"}
+        claim_statuses = sorted({data.get("claim_status", "legacy_unspecified")
+                                 for data in topology_records if data.get("kind") in required})
+        evidence_chain_complete = not bool(required - kinds)
+        unconditional_publishable = (evidence_chain_complete
+                                     and claim_statuses == ["ordinary"])
         status[topology_id] = {
             "recorded_kinds": sorted(kind for kind in kinds if kind),
             "missing_publishable_evidence": sorted(required - kinds),
-            "publishable": not bool(required - kinds),
+            "claim_statuses": claim_statuses,
+            "evidence_chain_complete": evidence_chain_complete,
+            "unconditional_publishable": unconditional_publishable,
+            "conditional_conclusion_required": evidence_chain_complete and not unconditional_publishable,
         }
     result = {"campaign_id": campaign["campaign_id"], "valid": not errors,
               "errors": errors, "topologies": status,
-              "note": "publishable means the required evidence types are recorded; inspect their source reports before claiming a result."}
+              "note": "An evidence chain is complete only when all required kinds are recorded. An unconditional claim additionally requires every required entry to be marked ordinary; conditional or legacy-unspecified evidence must retain its stated scope."}
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if not errors else 1
 
@@ -199,6 +209,9 @@ def main():
     record_parser.add_argument("--topology", required=True)
     record_parser.add_argument("--source", required=True)
     record_parser.add_argument("--note")
+    record_parser.add_argument("--claim-status", default="ordinary",
+                               choices=("ordinary", "conditional_exploratory", "diagnostic"),
+                               help="Claim scope of this immutable reference; conditional entries never support an unconditional performance claim.")
     record_parser.set_defaults(func=record)
     validate_parser = subcommands.add_parser("validate", help="verify all archived references still hash-match")
     validate_parser.add_argument("--campaign-dir", required=True)

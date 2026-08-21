@@ -93,10 +93,10 @@ measured-step capture。它用于描述工作分布，不是吞吐样本。
 optimizer step。分析器将这部分保留为未分类，而不把它强行标成 AdamW。因此 profile
 只能作为与吞吐方向一致的描述性证据，不能证明某个 kernel 就是唯一因果瓶颈。
 
-## TP=2 预备实验与 Nsight 诊断（2026-08-21，dirty tree，不是发布结论）
+## TP=2 受控实验与 Nsight 诊断（2026-08-21，提交前代码快照已核验固定）
 
-这是一组为后续多卡 clean campaign 准备的 TP=2 预备实验，不改变上面的单卡 clean
-主结论。它使用同一份 125M shared-contract artifact：FP32、`TP=2, PP=1, DP=1`、
+这组实验不改变上面的单卡主结论，但为 TP=2 给出了独立、范围明确的受控结果。它使用同一份
+125M shared-contract artifact：FP32、`TP=2, PP=1, DP=1`、
 两张空闲 L20（GPU 0/1）、`B=4`、`S=512`、每个 update 8 个 micro-batch（16,384
 tokens）、30 次 warm-up、200 次 measured update，以及 standard unfused AdamW。
 
@@ -108,10 +108,16 @@ tokens）、30 次 warm-up、200 次 measured update，以及 standard unfused A
 | 相对差异 | - | - | mini 慢约 **1.36%** |
 | 单对范围 | 12,104–12,319 tok/s | 12,351–12,453 tok/s | 0.971975–0.997409x |
 
-这五组配对都显示 mini 未超过 MCore，因此此合同下不能声称 TP=2 更快。每个 measured
-update 的平均差约为 18 ms。源树在采样时为 dirty（`source_tree_clean=false`），因此它
-只能作为**预备统计摘要**；在 runner/workload 提交并清理工作树后，必须按同一合同重跑
-五组配对，才可以升级为发布结论。远端可审计汇总位于：
+这五组配对都显示 mini 未超过 MCore，因此在该合同下 mini 平均慢约 1.36%，每个 measured
+update 的平均差约为 18 ms。运行时的原始 bundle 如实记录 `source_tree_clean=false`：这只表示
+TP=2 实现和 runner 当时尚未先提交到 Git，不表示 GPU、输入或结果被污染。事后已对远端实际
+运行的 17 个 TP=2 关键实现、runner、contract 与测试文件逐一做 SHA-256 比对，均与 commit
+`b624721` 完全一致；该 commit 因而固定了实际运行的代码快照。五组比较使用同一份代码、
+同一 artifact、同一 GPU 0/1 和交替顺序，结果本身可复查。
+
+此结论的边界来自范围，而不是“代码未提交”：它仅覆盖 125M、FP32、TP=2/PP=1、两张 L20
+和 matching MCore custom-loop path；1.36% 也是小差异，不应外推为通用框架排名。以后在
+独立环境复跑可增加重复性，但不是否定现有五组结果的前提。远端可审计汇总位于：
 
 ~~~text
 evidence/fair-125m-parallel-20260821/reports/
@@ -156,6 +162,19 @@ diagnostics/20260821T1054Z-tp2-nsys-mcore/
 分段计时（forward、loss/vocab、backward、AdamW），再按五组配对报告每段的均值和差异；
 不能从这两份全量 Nsight trace 的绝对耗时反推正式吞吐根因。
 
+## PP 多卡矩阵：完整资产，条件性结论（2026-08-21）
+
+TP=1、PP=2 与 TP=2、PP=2 均完成了固定 artifact、五对 ABBA 吞吐、每个 CUDA rank 独立的 Nsight Systems report、SQLite、CSV 和只追加 ledger。两边使用相同的 125M FP32 合同：B=4、S=512、8 micro-batch/update、30 warm-up + 200 measured update、standard unfused AdamW，以及显式 P2P 的非交错 1F1B matching custom-loop。
+
+| 拓扑 | mini | matching MCore custom-loop | mini / MCore | 可引用范围 |
+| --- | ---: | ---: | ---: | --- |
+| TP=1、PP=2、DP=1 | 54,402.8 tok/s | 45,260.6 tok/s | **1.201991x** | 后验探索性三窗口 calibration 下的条件性观察。 |
+| TP=2、PP=2、DP=1 | 16,067.8 tok/s | 16,480.8 tok/s | **0.974974x** | 后验探索性三窗口 calibration 下的条件性观察。 |
+
+两格都满足初始映射精确、logits 约 4.21e-4，低于 5e-4；但原 campaign 的逐 tensor gradient/one-step parameter relative-L2 gate 没有整体通过。观察 offset 0 后才定义 global metric calibration，并在 offset 8、16 独立复现。因此必须同时保留两个事实：**原始 gate 未过**，以及**后验探索性 calibration 三窗口复现**。不能把后者写成原始数值门槛已经通过。
+
+PP 吞吐、结论和 profile index 均在 L20 的 evidence/fair-125m-parallel-20260821/reports/；profile 原件位于同目录下的 profiles。TP=1、PP=2 有每实现两个 rank report，TP=2、PP=2 有每实现四个 rank report。profile 只保存事件结构，不能用 trace 的 absolute time 替代吞吐统计；打开前应复制原始 .nsys-rep 到仓库外。
+
 ## mini 内部优化观察（不是跨框架结论）
 
 早期 mini-only BF16 实验对 fused 与 unfused AdamW 做过 5 组交替配对，观测到
@@ -194,6 +213,7 @@ artifact 和配置、至少 5 组 ABBA/BAAB 风格配对，并将 profile captur
 ## 要怎样扩大结论范围
 
 1. 让共享权重的 numerical gate 在 BF16 下通过。
-2. 将同一合同与 gate 扩展到 TP、PP 和多卡。
-3. 对更大模型和生产相关的 optimizer/configuration 重复实验。
-4. 使用固定的真实 train/validation split 与 held-out PPL 讨论训练质量。
+2. 以 clean tree 独立复跑已完成的 TP/PP 矩阵，增加重复性。
+3. 定位并消除 PP 原逐 tensor gate 失败，再以预注册 gate 复验。
+4. 对更大模型和生产相关的 optimizer/configuration 重复实验。
+5. 使用固定的真实 train/validation split 与 held-out PPL 讨论训练质量。

@@ -15,7 +15,7 @@ except ImportError:
     from validate_run_bundle import validate
 
 
-def load_bundles(results_dir, allow_dirty=False):
+def load_bundles(results_dir, allow_dirty=False, topology=None, condition=None):
     records = []
     for manifest_path in sorted(Path(results_dir).glob("*/manifest.json")):
         validation_errors = validate(manifest_path.parent)
@@ -34,6 +34,10 @@ def load_bundles(results_dir, allow_dirty=False):
             continue
         throughput = manifest.get("metrics", {}).get("throughput_tok_s")
         tags = manifest.get("tags", {})
+        if topology is not None and tags.get("topology") != topology:
+            continue
+        if condition is not None and tags.get("condition") != condition:
+            continue
         if isinstance(throughput, (int, float)) and isinstance(tags, dict):
             records.append({"bundle": str(manifest_path.parent), "throughput_tok_s": throughput,
                             "tags": tags, "run_id": manifest.get("run_id"),
@@ -86,14 +90,25 @@ def main():
     parser.add_argument("--min-pairs", type=int, default=5)
     parser.add_argument("--allow-dirty", action="store_true",
                         help="Include dirty-tree samples; resulting report is provisional.")
+    parser.add_argument("--topology",
+                        help="Require an exact topology tag, preventing pair IDs from different topologies mixing.")
+    parser.add_argument("--condition",
+                        help="Require an exact condition tag in addition to the topology filter.")
     parser.add_argument("--output", help="Optional JSON file for the immutable aggregate report.")
     args = parser.parse_args()
     if args.min_pairs < 1:
         parser.error("--min-pairs must be positive")
     try:
-        report = summarize(load_bundles(args.results_dir, args.allow_dirty), args.left, args.right, args.min_pairs)
+        report = summarize(load_bundles(args.results_dir, args.allow_dirty, args.topology, args.condition),
+                           args.left, args.right, args.min_pairs)
     except ValueError as error:
         parser.error(str(error))
+    report["selection"] = {
+        "results_dir": str(Path(args.results_dir)),
+        "topology": args.topology,
+        "condition": args.condition,
+        "allow_dirty": args.allow_dirty,
+    }
     rendered = json.dumps(report, indent=2, sort_keys=True)
     print(rendered)
     if args.output:

@@ -33,8 +33,11 @@
 Megatron-Core custom-loop path 的 1.179204x。** 它不代表默认 Megatron-Core、BF16、
 fused optimizer、大模型、TP/PP/多卡扩展、生产训练负载或训练质量的通用结论。
 
-完整方法、原始资产和限制请看：[实验协议](docs/experiment-protocol.md)、
-[证据 ledger](docs/experiment-results-2026-08-17.md)、[benchmark 指南](docs/benchmarks.md)。
+125M 的 TP/PP 四格矩阵也已完成，但多卡不是简单地“都更快”：TP=2、PP=1 与 TP=2、PP=2 观察到 mini 略慢，TP=1、PP=2 在后验探索性 calibration 条件下观察到 mini 更快。PP 的原始逐 tensor 数值 gate 未通过，因此这些结果只作为**条件性 matching-custom-loop 观察**保存，不能用于泛化宣传。完整数字、五对样本、Nsight 原始资产与边界均在下方链接的 125M 并行实验总览。
+
+完整方法、原始资产和限制请先看：[125M 并行实验总览](docs/parallel-experiment-status.md)，
+再按需查看[实验协议](docs/experiment-protocol.md)、[证据 ledger](docs/experiment-results-2026-08-17.md)、
+[benchmark 指南](docs/benchmarks.md)。
 
 ## 15 分钟读代码路线
 
@@ -127,6 +130,7 @@ CPU Gloo 下的 PP=2/4 1F1B 等价性、QKV mapping round-trip、bundle checksum
 ## 深入阅读
 
 - [架构与数据流](docs/architecture.md)
+- [125M 并行实验总览：计划、进展与下一步](docs/parallel-experiment-status.md)
 - [Benchmark 与复现](docs/benchmarks.md)
 - [可信实验协议](docs/experiment-protocol.md)
 - [L20 证据 ledger](docs/experiment-results-2026-08-17.md)
