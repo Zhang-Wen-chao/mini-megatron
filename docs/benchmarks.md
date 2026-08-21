@@ -1,223 +1,136 @@
-# Benchmarks
+# Benchmark 与复现
 
-> mini-megatron 的所有性能数据怎么读、怎么复现、怎么扩展。
+> 本文把当前可审计结论与探索性历史记录分开。吞吐数字只有在模型、数据、数值等价、
+> 重复次数和原始证据都被记录时，才值得被引用。
 
-> 实验口径：本页的历史表格是 legacy evidence。新的性能结论必须遵守
-> [可信实验协议](experiment-protocol.md)：配置等价、至少五个配对重复、保存
-> manifest 与原始 Nsight 产物。
+## 当前受控结论（2026-08-18，clean tree）
 
----
+正式跨框架实验是一次刻意收窄范围的受控实验：在空闲 L20 主机上，将 mini-megatron
+与 matching Megatron-Core custom-loop path 比较；它不是对默认生产 Megatron-Core 的比较。
 
-## 零、最新受控证据（2026-08-18，clean tree）
+| 控制项 | 固定内容 |
+| --- | --- |
+| 源码 | clean L20 source commit ad82d7e |
+| 并行与精度 | 1 张 L20，TP=1，PP=1，FP32 |
+| 模型 | 125M 无 bias GPT：12 layers、H=768、12 heads、FFN=3072、learned positions、pre-LN、GELU、无 dropout |
+| 初始状态 | 两边各 162,633,216 参数；101 个 tensor 从共享权重映射；QKV 显式布局转换 |
+| 输入 | 相同的不可变 synthetic next-token artifact：230 batches，B=4，S=512 |
+| Optimizer | standard unfused AdamW |
+| 计时 | 30 warm-up + 200 measured steps，5 组 idle-GPU 交替配对 |
 
-最新 L20 会话已在已提交源码 (`ad82d7e`)、GPU 空闲预检下完成 5 组交替配对，
-所有 run bundle 校验和与两份 Nsight 原始产物均已验证：
+先通过数值等价门槛，再开始计时：
 
-- **公平 TP=1 FP32 对比**：同权重转换、同一 230 个固定 next-token batch、同一
-  无 bias GPT 合同、标准 AdamW、5 个交替配对，mini/MCore 配对均值为
-  **1.179204x**（范围 1.178079-1.180554；mini 32,669.6，MCore 27,704.8 tok/s）。
-  每个 manifest 均为 `source_tree_clean=true`。此结果只适用于该精确的
-  单卡 FP32 合同，不能外推为通用框架结论。
-- 旧的 mini fused 对仓库 Megatron-Core custom-loop baseline 2.289x 测量没有共享
-  权重、固定输入或相同前向图，现仅保留为脚本端到端开销的诊断记录，**不可解读为
-  框架性能胜负**。
-- mini fused 对 mini unfused：**+17.08%**（1.1708x 配对均值；5 组）。
-- 正确的 L20 容器完整测试：**38 passed in 11.28s**。
+| 比较项 | 观测值 | 预先声明的阈值 |
+| --- | ---: | ---: |
+| 初始映射权重 max diff | 0 | exact match |
+| Logits relative L2 | 3.5498e-4 | 5e-4 |
+| Worst gradient relative L2 | 3.5508e-4 | 5e-4 |
+| One-step parameter relative L2 | 6.3139e-5 | 1e-4 |
 
-完整环境、逐项统计、原始 .nsys-rep/SQLite 路径与 SHA-256 见
-[2026-08-17/18 evidence ledger](experiment-results-2026-08-17.md)。旧的
-dirty-tree 样本只作为历史对照保留，不参与当前汇总。
-该 custom-loop baseline 不构成“mini-megatron 普遍快于 Megatron”的主张；重跑前
-必须完成同权重、同输入、同语义的一步校验。
-BF16 目前没有通过同一数值门槛，不能与 FP32 公平结论混写。
+| 指标 | mini-megatron | matching MCore path |
+| --- | ---: | ---: |
+| 平均吞吐 | 32,669.6 tok/s | 27,704.8 tok/s |
+| 中位吞吐 | 32,664 tok/s | 27,716 tok/s |
+| 样本标准差 | 17.34 | 24.39 |
+| 配对吞吐比 | **1.179204x** | 范围 1.178079–1.180554 |
+| Peak allocated memory | 4.52 GB | 5.13 GB |
 
-## 一、历史数据（2026-08-11）：fused AdamW
+**能够支持的结论：**在这一精确的共享模型、共享输入、FP32 合同下，mini 的匹配路径
+吞吐是 matching MCore custom-loop path 的 1.179204x。
 
-### 50 步 benchmark（4×L20 48GB, BF16）
+**不能支持的结论：**通用框架排名、默认 MCore、BF16、fused optimizer、TP/PP/多卡扩展、
+大模型或多机训练、生产负载行为，或训练质量。
 
-| 配置 | BF16 (--amp) | BF16 + fused (--amp --fused) | gain |
-|------|--------------|------------------------------|------|
-| **TP=1 PP=1** | 51,700 tok/s, 36.18% MFU | **60,617 tok/s, 42.42% MFU** | **+17.2%** |
-| **TP=2 PP=1** | 26,133 tok/s, 9.14% MFU | 28,126 tok/s, 9.84% MFU | +7.6% |
-| **TP=2 PP=2** | 23,186 tok/s, 4.21% MFU | 23,261 tok/s, 4.22% MFU | +0.3% |
+BF16 被有意排除：在同一初始条件下，logits relative L2 为 5.3204e-3，worst gradient
+relative L2 为 7.0706e-2，未通过 FP32 使用的 parity gate。
 
-> 测量方法：unfused/fused 交替各跑 2 轮（每轮 50 测量步 + 10 warmup，同 seed=42 随机数据），取稳定轮次。`--fused` 把 AdamW 优化器步骤合并为单 kernel（Nsight Systems 测量：优化器 kernel 时间从 45.2% 降到 26.3%，占 wall-clock 从 38.5% 降到 26.3%）。单卡 125M 时收益最大（优化器是内存带宽瓶颈）；TP/PP 切分后每 rank 参数变少，优化器不再主导，收益趋近于零。
-> 训练等价性：固定数据文件 + 同 seed 下 unfused/fused 逐 step loss 对比，50 步 diff=0，200 步 Max diff ~1e-4（非位级一致，浮点归约顺序差异）。
-> 完整测试条件：`docs/nsight-adamw-optimizer-bottleneck.md` 附录
+## 如何检查原始证据
 
----
+聚合结果位于：
 
-## 二、历史数据（2026-07-24）
+~~~text
+results/aggregates/fair-tp1-fp32-unfused-clean-ad82d7e.json
+~~~
 
-### 50 步快速 benchmark（4×L20 48GB）
+5 组配对 bundle 与 2 组 profile bundle 位于：
 
-| 配置 | mini-megatron |  | Megatron-Core |  |
-|------|---------------|--|---------------|--|
-| | FP32 | BF16 | | FP32 | BF16 |
-| **TP=1 PP=1** | 34,152 tok/s, 23.90% MFU | 38,873 tok/s, 27.20% MFU | 16,479 tok/s, 11.53% MFU | 16,408 tok/s, 11.48% MFU |
-| **TP=2 PP=1** | 31,048 tok/s, 10.86% MFU | 47,126 tok/s, 16.49% MFU | 19,471 tok/s, 6.80% MFU | 19,250 tok/s, 6.74% MFU |
-| **TP=2 PP=2** | 31,699 tok/s, 5.62% MFU | 32,191 tok/s, 5.70% MFU | - | - |
+~~~text
+results/runs-clean-ad82d7e/
+├── ...-fair-tp1-fp32-clean-mini-*/
+├── ...-fair-tp1-fp32-clean-mcore-*/
+├── 20260818T003611Z-fair-tp1-fp32-clean-profile-mini/
+└── 20260818T003641Z-fair-tp1-fp32-clean-profile-mcore/
+~~~
 
-**mini-megatron 加速**：1.6-2.4x（FP32 1.59-2.07x，BF16 2.37x）
+每个 bundle 均包含 manifest、精确命令、环境、stdout/stderr、metrics、SHA-256 checksum；
+profile bundle 另有原始 .nsys-rep、SQLite、CSV 导出和保守分析 JSON。引用前必须校验：
 
-### 2000 步训练对比（identity 任务）
+~~~bash
+python3 experiments/validate_run_bundle.py \
+  results/runs-clean-ad82d7e/<run-id>
+~~~
 
-| 步数 | mini-megatron | Megatron-Core | mini 更快 |
-|------|---------------|---------------|-----------|
-| 200 | 0.06 | 9.88 | 165x |
-| 1000 | 0.0074 | 2.50 | 338x |
-| 2000 | **0.0054** | **0.30** | **55x** |
+请把原始 .nsys-rep 复制到仓库外再用 GUI 打开。profiling 软件可能更新报告元数据；
+Git 版本及其 checksum 才是不可变证据。
 
-两个最终都收敛到接近 0，但 mini 快 55x（2000 步时）。
+[证据 ledger](experiment-results-2026-08-17.md) 记录了软件版本、checksum、每一组复现
+统计和原始 profile 文件名。
 
-完整数据：`results/identity_2000steps.json`
+## Nsight Systems 能补充什么，不能补充什么
 
----
+profile 复用了相同的共享 FP32 checkpoint 与 batch，但它是单独执行的 10 warm-up + 20
+measured-step capture。它用于描述工作分布，不是吞吐样本。
 
-## 三、怎么读这些数据
+| Kernel-time 描述 | mini | MCore |
+| --- | ---: | ---: |
+| GPU kernel 总时间 | 1.8362 s | 2.0363 s |
+| GEMM | 61.54% | 50.18% |
+| Copy/cast | 4.09% | 10.51% |
+| 未分类 | 34.36% | 39.31% |
+| 稳定区间 GPU gap | 49.981 ms (2.717%) | 139.966 ms (6.255%) |
 
-### "tok/s" 是什么
-每秒处理的 token 数。`B × S × num_steps / elapsed`
+通用的 vectorized_elementwise_kernel 既可能是 GELU、residual、LayerNorm，也可能是
+optimizer step。分析器将这部分保留为未分类，而不把它强行标成 AdamW。因此 profile
+只能作为与吞吐方向一致的描述性证据，不能证明某个 kernel 就是唯一因果瓶颈。
 
-### "MFU" 是什么
-Model FLOPs Utilization，实际算力 / 理论峰值。
+## mini 内部优化观察（不是跨框架结论）
 
-公式（来自 `main.py:compute_mfu`）：
-```
-attn_proj = 24 × H × H            # attention 投影
-mlp = 48 × H × H                  # FFN
-logits = 6 × H × V                # lm head
-flops_per_step = (attn + mlp) × L × tokens + 6 × L × H × S × S
-mfu = flops_per_step × num_steps × dp_w / (elapsed × 110e12 × gpu_world)
-```
+早期 mini-only BF16 实验对 fused 与 unfused AdamW 做过 5 组交替配对，观测到
+fused=True 约 **+17.08%** 吞吐。这可以说明项目经历了“profile 提出假设、改代码、
+再重复测量”的优化闭环；但它不能替代跨框架语义等价，也不能解释当前跨框架差异的因果。
 
-`110e12` 是 L20 FP16 matmul 峰值（~110 TFLOPS）。
+## 不应该再宣传的历史记录
 
-### 为什么 mini-megatron 快
+早期 README 中的 1.6–2.4x 与 2.10x/2.28x mini 对 MCore 数字，使用过独立初始化、
+独立随机输入或不同原生计算图的脚本。它们仅作为历史诊断保留在 evidence ledger，
+**不能**证明框架性能优劣。
 
-| 因素 | 解释 |
-|------|------|
-| 无 DDP 包装 | Megatron 用 `DistributedDataParallel`，对单卡/小模型有 wrapper 开销 |
-| 无 Float16Module | Megatron 强加 FP16 包装，125M 模型反而拖慢 |
-| `torch.autocast` | 按需转换，无 wrapper 开销 |
-| 直白训练循环 | ~50 行，无 framework 抽象 |
+同样，identity-token 的 loss 曲线只是训练 wiring smoke test，不是训练质量、收敛速度
+或泛化能力比较。
 
-### 为什么 mini-megatron 收敛快（2000 步）
+## 如何复现下一次受控实验
 
-| 因素 | 解释 |
-|------|------|
-| 无 scaled output init | Megatron `output_layer_init_method` 用 `0.02/sqrt(2L)≈0.0041`（GPT-2 设计），前 1500 步输出层几乎不动 |
-| 无 FusedLayerNorm | Megatron 的 Triton 实现对小模型 gradient 路径不同 |
-| F.scaled_dot_product_attention | 自动选最优 kernel，无 wrapper |
+共享 artifact 构造、equivalence gate、benchmark runner 与 summary 都有对应脚本，不依赖
+手写表格：
 
----
+~~~bash
+# 先运行 shared-contract parity gate
+python3 experiments/validate_mcore_equivalence.py --help
 
-## 四、复现数据
+# 再运行 paired runner；每个命令产生一个 immutable bundle
+python3 experiments/run_fair_tp1_benchmark.py --help
 
-### 受控 benchmark（替代手工 50 步样本）
-
-```bash
-python3 experiments/run_experiment.py --name mini-125m-tp1-fused-r01 \
-  --tag variant=mini --tag pair=01 --tag condition=125m-s512-b4-bf16-fused-200x30 -- \
-  torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 --num-steps 200 \
-  --warmup-steps 30 --micro-batch-size 4 --amp --fused
-```
-
-### 50 步 benchmark（fused AdamW）
-
-```bash
-# mini-megatron TP=1 PP=1 BF16 + fused AdamW
-torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 --num-steps 50 --amp --fused
-```
-
-### 2000 步对比
-
-```bash
-cd <repo-root>
-
-# 1. 生成数据
-python3 experiments/synthetic_data.py experiments/synthetic_data.pt
-python3 experiments/make_identity.py    # 自动基于 synthetic_data.pt 生成
-
-# 2. 跑两个框架
-torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 \
-  --num-steps 2000 --warmup-steps 50 \
-  --data-file experiments/identity_data.pt
-torchrun --nproc_per_node=1 eval/run_megatron_baseline.py --tp 1 --pp 1 \
-  --num-steps 2000 --warmup-steps 50 \
-  --data-file experiments/identity_data.pt
-
-# 3. 用 compare_convergence.py 一键对比
-python3 experiments/compare_convergence.py --data-file experiments/identity_data.pt
-```
-
-### 自动化所有 benchmark
-
-```bash
-# 每个命令独立生成一个 run bundle。按 ABBA/BAAB 顺序运行五对，再汇总：
-python3 experiments/summarize_paired_results.py --results-dir results/runs \
-  --left mini --right megatron --output results/aggregates/125m-tp1.json
-```
-
----
-
-## 五、怎么保存新数据
-
-跑完新 benchmark 后：
-
-```bash
-# 1. 先验证每个 bundle，再生成 aggregate（不能挑最快样本）
+# 发布前逐个校验 bundle，再汇总
 python3 experiments/validate_run_bundle.py results/runs/<run-id>
+python3 experiments/summarize_paired_results.py --help
+~~~
 
-# 2. 保存 manifest、环境、命令、CSV、checksums 和分析 JSON；
-#    .nsys-rep/.sqlite 留在不可变归档或 Git LFS，并记录 URI、大小、SHA-256。
+遵守 [实验协议](experiment-protocol.md)：使用 clean source tree、阻止 active GPU、冻结
+artifact 和配置、至少 5 组 ABBA/BAAB 风格配对，并将 profile capture 与吞吐计时分开。
 
-# 3. 只有 clean-tree、至少五个配对和语义等价检查完成后，才更新 README 摘要。
-```
+## 要怎样扩大结论范围
 
----
-
-## 六、添加新 benchmark
-
-需要测试新场景（如 7B 模型、不同 batch size、新硬件）时：
-
-1. **写跑脚本**（放 `experiments/`）
-2. **输出结构化数据**（json / csv）
-3. **加测试**（在 `tests/test_*_results.py`）
-4. **更新本文档**（新的测试条件、新数据）
-5. **更新 README**（性能表格）
-
-### 示例：加 7B 模型 benchmark
-
-```bash
-# 1. 在 config.py 加 7B 配置
-# 2. 跑 benchmark
-torchrun --nproc_per_node=4 main.py --tp 2 --pp 2 --num-steps 100
-# 3. 解析输出存为 results/7b_tp2pp2.json
-# 4. 在 tests/test_7b_results.py 加验证
-# 5. 在 README 和 benchmarks.md 加新表
-```
-
----
-
-## 七、已知问题
-
-- Megatron-Core baseline 在 BF16 模式下吞吐和 FP32 一样（`16,408 vs 16,479 tok/s`），因为 `Float16Module` 包装在小模型上开销 > 收益
-- 2000 步对比中 Megatron 到 2000 步 loss=0.30 还没完全收敛，再跑 5000 步可能更好
-- 7B+ 模型的 benchmark 没跑过（125M 是测试过的上限）
-- Linux x86 + NVIDIA GPU 是测试过的环境；Apple Silicon (MPS) 没测
-
----
-
-## 八、性能调优指南
-
-发现 mini-megatron 慢时按这个顺序排查：
-
-1. **用 BF16**（`--amp`）—— 1.1-1.5x 免费
-2. **检查 batch size** —— 小 batch 浪费 SM
-3. **检查 seq_len** —— 太长 OOM，太短浪费 attention
-4. **profile** —— `python -c "import torch; torch.profiler.profile(...)"` 找瓶颈
-5. **减少 Python 循环** —— Python 端是瓶颈就 vectorize
-6. **考虑 F.scaled_dot_product_attention** —— 已用，自动选最优
-
-参考实现里的优化（`comm/overlap_*.py` 等）只在 ≥1B 模型有收益。
+1. 让共享权重的 numerical gate 在 BF16 下通过。
+2. 将同一合同与 gate 扩展到 TP、PP 和多卡。
+3. 对更大模型和生产相关的 optimizer/configuration 重复实验。
+4. 使用固定的真实 train/validation split 与 held-out PPL 讨论训练质量。

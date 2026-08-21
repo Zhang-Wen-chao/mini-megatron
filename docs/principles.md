@@ -1,117 +1,77 @@
 # 设计原则
 
-> mini-megatron 为什么是 ~800 行、为什么纯 PyTorch，以及这些设计的权衡和理由。
-> 历史的 1.6-2.4x 跨框架表格不具备同权重、同输入和同语义条件，不能作为
-> “快于 Megatron-Core”的结论。
+> mini-megatron 的目标是把 Megatron 风格训练的核心机制做成一个可读、可运行、
+> 可测试、可审计的教学实现；不是以较少代码替代生产训练框架。
 
----
+## 一、教学完整性优先于功能数量
 
-## 一、为什么 800 行
+项目选择了一条明确边界：把 TP、non-interleaved 1F1B PP、DP 和 BF16 AMP 接入同一条
+主训练链路，并让读者能从入口一路跟到通信、反向和 optimizer step。
 
-**目标读者**：想理解 Megatron-LM 并行机制的学生、初学者、AI 培训学员。
+约 830 行的 wired training path 不是“行数越少越好”的宣传，而是一个约束：
 
-**800 行的含义**：
-- < 500 行：太简单，隐藏关键机制
-- ~800 行：完整覆盖 TP/PP/DP/AMP，每行都重要
-- 2000+ 行：开始有 framework 的复杂度
+- 太少会把 P2P gradient 回传、TP autograd、DP 同步或 pipeline schedule 隐藏掉；
+- 太多会让读者无法在一两次阅读中建立完整心智模型；
+- 只保留解释核心机制所需的代码，生产能力则明确标为未接入或参考实现。
 
-**判断标准**：一个新人能在 1-2 小时内读完全部代码并理解每一行。如果不能，代码太复杂。
+## 二、纯 PyTorch 是为了把机制露出来
 
----
+| 选择 | 目的 |
+| --- | --- |
+| PyTorch 原生 module 和 distributed API | 让 forward、backward、collective 和 P2P 通信直接可见 |
+| PyTorch SDPA | 复用框架选择合适 attention kernel 的能力，不把注意力从并行机制转移到手写 kernel |
+| 不依赖 HuggingFace / Accelerate | 避免高层封装遮蔽 rank、group、shard 和通信时序 |
+| 少量 reference modules | 让 ZeRO-1、sequence parallel、overlap 等概念可以被阅读，但不把“文件存在”误称为端到端能力 |
 
-## 二、为什么纯 PyTorch
+纯 PyTorch 的代价也很清楚：它没有生产 Megatron 的大量可扩展性、容错、调度与性能能力。
 
-| 选型 | 评价 |
-|------|------|
-| PyTorch 原生 | ✅ 透明，每步可见，调试容易 |
-| Apex | ❌ C++/CUDA 混编，隐藏机制 |
-| Transformer Engine | ❌ 过度工程，对 125M 模型 overkill |
-| Megatron-Core | ❌ 300K 行，教学用看不懂 |
-| DeepSpeed | ❌ ZeRO 设计为主，TP/PP 不直观 |
+## 三、实现一条正确的 PP 反向链路比画 PP 图更重要
 
-**原则**：教学价值 > 生产价值。
+流水线 stage 之间不能共享 PyTorch autograd 图。前一 stage 发送 activation 后，后一
+stage 必须将收到的 tensor 作为新的图根计算 activation gradient，并 P2P 回传；前一
+stage 再以该 gradient 调用本地 backward。否则前一段模型不会获得正确梯度。
 
-例外：完全独立的小工具（如 `comm/overlap_*.py`）可以略复杂，但需明确标注。
+在此基础上，默认 non-interleaved 1F1B 将 schedule 分成 warmup、forward/backward
+交替和 drain，并用 look-ahead recv 尝试重叠通信与计算。项目以 PP=2 与 PP=4 的
+CPU/Gloo 多进程参数等价测试验证它和单进程参考的更新结果一致。
 
----
+## 四、性能结论必须先满足等价，再谈速度
 
-## 三、为什么 1.6-2.4x 快
+“名义模型大小相同、同一天运行、吞吐公式相同”不足以构成公平跨框架实验。当前协议要求：
 
-mini-megatron 2000 步对比：loss 0.0054 vs Megatron 0.30。
+1. 固定模型合同、初始化/转换后权重、token/label、mask、optimizer、precision 和步数；
+2. 在计时前比较 logits、gradient 和一步更新后的参数，并记录阈值；
+3. 在空闲 GPU 上做至少五组 ABBA/BAAB 风格交替配对，公布每次结果而非最快值；
+4. 保存命令、环境、原始日志、manifest、checksum 和 profile 资产；
+5. 将 profile 用于解释，不把 profile elapsed time 当作吞吐结果。
 
-| 原因 | 说明 |
-|------|------|
-| 无 DDP 包装层 | 我们的 125M 模型不需要分布式包装开销 |
-| 无 Float16Module | Megatron 强加的 FP16 包装对小模型反而慢 |
-| 用 `torch.autocast` | 轻量级 BF16，按需转换，零开销 |
-| 无 checkpoint 框架 | 训练循环直接 50 行，零抽象 |
-| 简单数据流 | `tokens → model → loss → backward → step` 直线 |
+因此，当前能够引用的跨框架结论只有：在共享 125M GPT、固定 batch、FP32、TP=1/PP=1
+和 standard AdamW 的 L20 合同中，mini 相对 matching MCore custom-loop path 的配对
+吞吐比为 1.179204x。旧的 1.6–2.4x 与 2.x 数字来自不满足该协议的历史脚本，不能作为
+性能优劣结论。
 
-代价：mini-megatron 不用 FlashAttention（用 F.scaled_dot_product_attention 自动选）、不用 fused kernel（用 PyTorch 原生 matmul）。对 125M 模型，融合收益 < 抽象成本。
+## 五、验证范围要和能力范围匹配
 
----
+测试覆盖模型/TP/训练一步、PP=2/4 的 1F1B 参数等价，以及实验资产的 checksum、QKV
+layout conversion 和配对统计。clean L20 会话的完整记录为 38 passed / 11.28s。
 
-## 四、为什么收敛快 7-10x
+但这不等于项目已覆盖生产训练：interleaved 1F1B、activation checkpointing、真实数据
+管道、ZeRO-1 主链路、sequence parallel 主链路、overlap、MoE、FSDP/CP 等仍未接入。
+相应地，当前实验也不支持 BF16 parity、多卡公平对比、大模型、长训练收敛或 held-out PPL
+结论。
 
-2000 步 identity 任务：mini 0.0054 vs Megatron 0.30。
+## 六、何时应该升级而不是继续堆功能
 
-| 原因 | 说明 |
-|------|------|
-| 无 scaled init | Megatron 的 `output_layer_init_method` 用 `std=0.02/sqrt(2L)≈0.0041`，前 1500 步输出层几乎不动 |
-| 无 FusedLayerNorm | Megatron 的 `FusedLayerNorm` 是 Triton 实现，gradient 路径不同 |
-| 简单 attention | `F.scaled_dot_product_attention` 自动选最优 kernel，无 wrapper 开销 |
+当需求变成 1B+ 大模型、多机、MoE、真实数据训练或生产级容错时，应当把它视为新的
+工程问题：要么使用 Megatron-Core / DeepSpeed 等成熟框架，要么单独建立 production
+分支并补齐系统设计、测试和实验协议。教学主线不应悄悄膨胀成一个未经验证的生产框架。
 
-**结论**：Megatron 的优化（融合 kernel、TP-aware init）针对 1B+ 大模型，对 125M + 短训练是负优化。
+## 七、证据优先的维护规则
 
----
+- 新性能数字先进入带 checksum 的 run bundle，再写文档；
+- 源码不 clean、GPU 不空闲、缺少数值等价或少于五组配对的运行，只能做探索记录；
+- 原始 Nsight 报告是证据资产，GUI 打开前先复制到仓库外，避免改写版本化文件；
+- 一旦发现旧结论控制条件不足，应保留追溯记录，但从首页与正式结论中撤回。
 
-## 五、不做什么
-
-明确**不**实现（避免 scope creep）：
-
-| 功能 | 不做的原因 |
-|------|----------|
-| 1F1B interleaved | serial 1F1B 对 125M 够用，interleaved 增加复杂度 |
-| MoE / Expert Parallel | 教学目标不需要；单独项目 |
-| Flash Attention 显式 | F.scaled_dot_product_attention 自动选 |
-| Fused softmax / rotary | 125M 模型，PyTorch 原生够用 |
-| Dynamic loss scaling | BF16 不需要 loss scaling（FP16 才需要） |
-| FSDP | ZeRO-1 风格（参考实现）足够教学 |
-| Checkpoint optimizer 状态 | 用户没要求；参考代码里有，未调 |
-| 数据并行 + 流水线并行组合 | 125M 模型不实用 |
-| Transformer Engine | 教学目标不需要 |
-| ONNX export | 跟纯 PyTorch 教学目标冲突 |
-
----
-
-## 六、什么时候应该升级
-
-mini-megatron 不应该无限增长。如果哪天：
-1. 有人要做 1B+ 训练 → 应该 fork 出 "production" 版本
-2. 有人要加 MoE → 单独项目
-3. 核心 800 行被突破 → 拆分子目录
-
-判断：单文件超过 1500 行就拆。
-
----
-
-## 七、benchmark 怎么读
-
-README 里的 "1.6-2.4x faster" 不是营销话术，是有数字支撑的：
-- 4×L20 48GB 测的（不是理论值）
-- 50 步 warmup + 50 步 benchmark
-- 模型、batch、seq_len 都和 Megatron-Core 一样
-
-详见 [benchmarks.md](./benchmarks.md)。
-
----
-
-## 八、教学优先
-
-mini-megatron 是教学项目，不是生产框架：
-- 可读性 > 性能
-- 透明 > 抽象
-- 简单 > 复杂
-- PyTorch 原生 > 自定义 kernel
-
-**铁律**：如果加一行代码让代码变复杂 10%，省 0.5% 性能，不加。
+具体执行步骤见 [experiment protocol](experiment-protocol.md) 与
+[benchmark guide](benchmarks.md)。

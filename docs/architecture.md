@@ -6,9 +6,9 @@
 
 ## 总体架构
 
-mini-megatron 是 Megatron-LM 核心并行策略的教学实现，~800 行代码覆盖：
+mini-megatron 是 Megatron-LM 核心并行策略的教学实现；wired training path 约 830 行，覆盖：
 - **Tensor Parallelism (TP)**：ColumnParallel + RowParallel 切分
-- **Pipeline Parallelism (PP)**：serial 流水线 + warmup
+- **Pipeline Parallelism (PP)**：默认 non-interleaved 1F1B（serial 仅作 legacy 对照）
 - **Data Parallelism (DP)**：all-reduce 梯度同步
 - **BF16 Mixed Precision (AMP)**：`torch.autocast`
 - **ZeRO-1 Optimizer**（参考实现，未接入）
@@ -27,9 +27,9 @@ mini-megatron/
 │   ├── embedding.py         # 词嵌入 + 位置嵌入
 │   ├── transformer.py       # Attention, DecoderLayer, Decoder, GPT
 │   └── loss.py              # Cross-entropy
-├── parallel/                # 并行原语
+├── parallel/                # 并行原语（wired）
 │   ├── tensor_parallel.py   # ColumnParallelLinear, RowParallelLinear
-│   ├── pipeline_parallel.py # 训练循环（serial 流水线）
+│   ├── pipeline_parallel.py # non-interleaved 1F1B + legacy serial
 │   ├── data_parallel.py     # all-reduce 梯度
 │   ├── process_groups.py    # TP/PP/DP 通信组
 │   └── distributed_optimizer.py  # ZeRO-1（参考）
@@ -40,12 +40,9 @@ mini-megatron/
 │   └── overlap_*.py         # 通信-计算 overlap（参考）
 ├── eval/                    # 对比基线
 │   └── run_megatron_baseline.py  # Megatron-Core baseline
-├── experiments/             # 实验脚本
-│   ├── compare_convergence.py
-│   ├── synthetic_data.py
-│   └── make_identity.py
-├── tests/                   # 26 个 pytest 测试
-├── results/                 # 2000 步对比数据
+├── experiments/             # artifact、数值等价、配对 benchmark、bundle 校验
+├── tests/                   # 38 项实现与实验资产测试
+├── results/                 # aggregate 与带 checksum 的 clean evidence bundle
 └── README.md
 ```
 
@@ -100,6 +97,11 @@ PP 默认用 Megatron 的 1F1B 调度：每 stage 先做 `pp-rank-1` 个 warmup 
 同时支持任意 pp >= 2；旧的 serial 锁步调度只实现了 pp=2（中间 stage 无代码）。
 `--schedule serial` 保留作为对比基线。
 
+PP stage 之间不共享 PyTorch autograd 图：前一 stage 发送 detached activation，下一
+stage 以 `requires_grad=True` 将它重建为图根；最后 stage 计算 loss 后把 activation
+gradient P2P 传回，前一 stage 执行 `x.backward(received_grad)`。这条链路是 PP 真正
+“跑通反向”的关键，而不是只把 forward activation 发到下一张卡。
+
 ### 4. 标准 init（std=0.02）
 所有 Linear 用 `N(0, 0.02)`，不用 Megatron 的 scaled init。
 **原因**：scaled init 针对 1B+ 大模型优化，125M 反而学得慢。
@@ -140,6 +142,9 @@ PP=2, 12 层 → stage 0 = layers[0..5], stage 1 = layers[6..11]
 
 warmup：stage 0 先做 N-1 个 forward，再开始 normal pipeline。
 
+`build_1f1b_schedule()` 对每个 stage 生成 warmup forward、F/B 交替和 drain。默认
+`1f1b` 支持任意 PP >= 2；`serial` 只保留为 PP=2 的旧对照路径。
+
 ---
 
 ## 通信原语
@@ -164,3 +169,17 @@ warmup：stage 0 先做 N-1 个 forward，再开始 normal pipeline。
 | weight_decay | 0.1 | config.py:WEIGHT_DECAY |
 | max_grad_norm | 1.0 | 未启用（参考代码里有，main.py 未调） |
 | dropout | 0 | config.py（已禁用） |
+
+---
+
+## 如何验证这些设计
+
+- `tests/test_pipeline_1f1b.py`：PP=2 和 PP=4 的 CPU/Gloo 多进程训练，更新后的每个
+  参数必须与单进程参考一致；
+- `tests/test_experiment_artifacts.py`：bundle checksum、QKV layout round-trip、
+  idle-GPU 前置检查和配对统计规则；
+- clean L20 环境中完整 suite 为 **38 passed / 11.28s**。
+
+性能层面还有独立的共享权重、固定输入、数值等价与五组交替配对流程；它不与单元测试
+混为一谈。详见 [benchmark guide](benchmarks.md) 和
+[experiment protocol](experiment-protocol.md)。

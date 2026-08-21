@@ -1,373 +1,136 @@
 # mini-megatron
 
-> A PyTorch implementation of Megatron-LM's TP + PP + DP + AMP, in **~800 lines** of readable code.
-> Demonstrates that 1% of Megatron's code can match or exceed its performance on small models.
+> 用可读的 PyTorch 代码实现 Megatron 风格训练的核心：张量并行（TP）、非交错 1F1B
+> 流水线并行（PP）、数据并行（DP）和 BF16 AMP；同时保留测试和可审计的实验证据。
 
-## Why?
+这不是 Megatron-Core 的替代品。这个仓库的价值是把核心训练机制压缩到可以完整阅读、
+实际运行、自动测试和性能剖析的范围内。训练主链路的入口、模型、并行模块和 TP autograd
+原语合计约 **830 行**。
 
-Megatron-LM is ~300K lines of production code. The core ideas behind its parallelism
-strategies are simple. This repo implements **Tensor Parallelism, Pipeline Parallelism,
-Data Parallelism, and BF16 Mixed Precision** in ~800 lines of pure PyTorch — covering
-the four most-used parallel strategies with 0.3% of the code.
+## 这个项目的亮点
 
-This is **not a production framework**. It's a learning artifact that:
-- Works end-to-end (TP/PP/DP/AMP all wired and tested)
-- Includes a narrowly scoped, clean-tree comparison against a matching
-  Megatron-Core custom-loop path; it is not a general framework verdict
-- Fits in one sitting so the entire training loop is readable
+| 亮点 | 真正实现了什么 | 如何验证 |
+| --- | --- | --- |
+| **三维并行拓扑** | 每个 rank 都有 (dp, pp, tp) 坐标，TP、PP、DP 的 process group 显式构建。 | `parallel/process_groups.py` 可直接阅读，另有模型与并行原语测试。 |
+| **真正的 1F1B，不是流程图** | PP 执行 warm-up forward、F/B 交替、P2P activation/gradient 回传和 look-ahead recv；默认支持 PP >= 2。 | CPU/Gloo 多进程测试验证 PP=2、PP=4 更新后的参数与单进程参考一致。 |
+| **最小但完整的 TP 数学** | QKV/MLP-up 使用 column parallel；attention output/MLP-down 使用 row parallel，只在必须处 all-reduce。 | TP 与可微 all-reduce 测试；核心代码集中在 `parallel/tensor_parallel.py` 和 `comm/all_reduce.py`。 |
+| **实验资产也是项目的一部分** | 实验运行生成不可变 bundle：命令、环境、日志、checksum，以及可选的原始 Nsight Systems 报告。 | 38 项测试覆盖实现和实验资产工具；已提交的 bundle 可做 checksum 校验。 |
 
-The performance tables are scoped microbenchmarks, not a claim that this project
-is a general replacement for Megatron-Core. New measurements follow the
-[credible experiment protocol](docs/experiment-protocol.md).
-The latest L20 evidence, retained profiler artifacts, and its limitations are in
-[the 2026-08-17/18 evidence ledger](docs/experiment-results-2026-08-17.md).
+## 正式性能结论：范围明确，而不是营销口号
 
-The current most comparable result is deliberately narrow: under a shared,
-bias-free 125M TP=1 FP32 contract with converted identical weights, fixed
-next-token batches, standard AdamW, and five alternating pairs, mini recorded
-a clean-tree 1.179204x throughput ratio relative to the matching Megatron-Core
-path. It is not a general framework claim; BF16 did not pass the same numerical
-equivalence gate and is reported separately rather than folded into this result.
+目前最可信的跨框架比较故意收窄了范围：
 
-For more complete coverage (ZeRO-1, Sequence Parallelism, 1F1B interleaved, etc.),
-see [Nano-Megatron](https://github.com/pyy233/Nano-Megatron) (~50K lines, production-grade).
+| 控制条件 | 固定内容 |
+| --- | --- |
+| 硬件与并行 | 1 张 NVIDIA L20，TP=1，PP=1 |
+| 模型 | 共享的 125M 无 bias GPT：12 layers、hidden 768、12 heads、FFN 3072、learned positions、pre-LN、GELU、无 dropout |
+| 等价控制 | 相同转换后的初始权重（101 个 tensor）、相同的 230 个固定 next-token batch、FP32、standard unfused AdamW |
+| 数值门槛 | 初始权重 max diff = 0；logits、最坏 gradient 与一步更新后的参数均在预先声明的阈值内 |
+| 测量方法 | clean tree、空闲 GPU，5 组交替配对；30 warm-up + 200 measured steps |
+| 吞吐 | mini **32,669.6 tok/s**；matching Megatron-Core custom-loop path **27,704.8 tok/s**；配对比 **1.179204x**（约 **17.9%**） |
 
-## Quick Start
+它只支持这句话：**在上述精确条件下，mini 的匹配训练路径吞吐是 matching
+Megatron-Core custom-loop path 的 1.179204x。** 它不代表默认 Megatron-Core、BF16、
+fused optimizer、大模型、TP/PP/多卡扩展、生产训练负载或训练质量的通用结论。
 
-```bash
-# Single GPU, FP32
+完整方法、原始资产和限制请看：[实验协议](docs/experiment-protocol.md)、
+[证据 ledger](docs/experiment-results-2026-08-17.md)、[benchmark 指南](docs/benchmarks.md)。
+
+## 15 分钟读代码路线
+
+1. [main.py](main.py)：构建并行拓扑，选择 PP 或非 PP 训练路径，然后执行 AdamW。
+2. [parallel/process_groups.py](parallel/process_groups.py)：全局 rank 如何映射为 (dp, pp, tp)。
+3. [parallel/tensor_parallel.py](parallel/tensor_parallel.py) 与 [comm/all_reduce.py](comm/all_reduce.py)：Column/Row 配对与其 backward 语义。
+4. [parallel/pipeline_parallel.py](parallel/pipeline_parallel.py)：1F1B、P2P activation/gradient 回传与 look-ahead。
+5. [tests/test_pipeline_1f1b.py](tests/test_pipeline_1f1b.py)：PP=2/4 的参数等价测试。
+
+## 快速开始
+
+需要：Python、带 CUDA/NCCL 的 PyTorch，以及 1–4 张 NVIDIA GPU。项目在 L20 上完成过
+实验；Megatron-Core 只在运行 matching benchmark path 时才是可选依赖。
+
+~~~bash
+pip install -r requirements.txt
+
+# 单卡 FP32
 torchrun --nproc_per_node=1 main.py --tp 1 --pp 1
 
-# Single GPU, BF16 mixed precision (faster, less memory)
+# 单卡 BF16 autocast
 torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 --amp
 
-# Single GPU, BF16 + fused AdamW (single kernel optimizer step)
-torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 --amp --fused
-
-# Single GPU, BF16 + fused + torch.compile (best: 47.2% MFU)
-torchrun --nproc_per_node=1 main.py --tp 1 --pp 1 --amp --fused --compile
-
-# TP=2 (2 GPUs)
+# 两卡 Tensor Parallel
 torchrun --nproc_per_node=2 main.py --tp 2 --pp 1
 
-# TP=2 PP=2 (4 GPUs)
-torchrun --nproc_per_node=4 main.py --tp 2 --pp 2
-
-# TP=2 PP=2 with 1F1B schedule (default) — bubbles shrink from ~50% to ~1%
+# 四卡 TP=2、PP=2；默认使用 1F1B
 torchrun --nproc_per_node=4 main.py --tp 2 --pp 2 --schedule 1f1b
+~~~
 
-# All combined
-torchrun --nproc_per_node=4 main.py --tp 2 --pp 2 --amp
-```
-
-`--schedule` selects the pipeline schedule: `1f1b` (default) interleaves
-forward/backward per stage so the backward of micro-batch j fills the bubble
-left by forward of j+1 (bubble `(pp-1)/(2m+pp-1)`); `serial` keeps the legacy
-lockstep schedule (bubble `(pp-1)/pp`, pp=2 only).
-
-### Configuration
-
-Default (125M-parameter GPT model):
-
-| Parameter | Value |
-|-----------|-------|
-| Layers | 12 |
-| Hidden size | 768 |
-| Attention heads | 12 |
-| Sequence length | 512 |
-| Learning rate | 6e-4 |
-| Warmup steps | 10 |
-| Max steps | 100 |
-
-Override via CLI: `--num-steps`, `--micro-batch-size`, `--warmup-steps`, `--log-interval`, `--amp`, `--fused`, `--compile`.
-Edit `config.py` for model architecture changes.
-
-`--fused` uses PyTorch's fused AdamW kernel, which collapses the optimizer step
-into a single kernel launch (vs ~9 per-step full-parameter scans by default).
-`--compile` wraps the model in `torch.compile`, which fuses the autocast weight
-casts into the GEMMs and reduces kernel launches. Together (TP=1, BF16,
-alternating A/B re-runs):
-
-| config | tok/s | MFU |
-|---|---|---|
-| `--amp` | 51,800 | 36.2% |
-| `--amp --fused` | 60,661 | 42.4% |
-| `--amp --compile` | 56,590 | 39.6% |
-| `--amp --fused --compile` | **67,335** | **47.2%** |
-
-Loss curves match the unfused path (fixed-data max diff ~1e-4, 200 steps).
-
-## Requirements
-
-- **PyTorch** >= 2.0 (with CUDA)
-- **NCCL** (bundled with PyTorch)
-- **1-4 NVIDIA GPUs** (tested on L20 48GB)
-
-Install: `pip install -r requirements.txt`
-
-For baseline comparison (`eval/run_megatron_baseline.py`), additionally:
-- `megatron-core` (optional, for performance comparison only)
-
-## Architecture
-
-```
-                    Data Parallel (DP)
-        ┌─────────┬─────────┬─────────┬─────────┐
-        │  GPU 0  │  GPU 1  │  GPU 2  │  GPU 3  │
-        │ model_0 │ model_0 │ model_0 │ model_0 │  ← each has full model copy
-        │ data_0  │ data_1  │ data_2  │ data_3  │  ← different data
-        └─────────┴─────────┴─────────┴─────────┘
-
-                Tensor Parallelism (TP)
-        ┌──────────────┬──────────────┐
-        │    GPU 0     │    GPU 1     │
-        │  ColumnParallel  │  RowParallel  │  ← split weight matrices
-        │  Linear (A/2)   │  Linear (B/2)  │     across GPUs
-        └──────────────┴──────────────┘
-
-                Pipeline Parallelism (PP)
-        ┌─────────┐     ┌─────────┐     ┌─────────┐
-        │  GPU 0  │ ──▶ │  GPU 1  │ ──▶ │  GPU 2  │
-        │ layers  │     │ layers  │     │ layers  │  ← each GPU has
-        │  0-3    │     │  4-7    │     │  8-11   │     different layers
-        └─────────┘     └─────────┘     └─────────┘
-```
-
-## Project Structure
-
-**Core training loop** (wired into `main.py`):
-
-```
-mini-megatron/
-├── main.py                  # Entry point + TP/PP/DP training loop
-├── config.py                # Model & training hyperparameters
-├── model/
-│   ├── transformer.py       # Attention, DecoderLayer, Decoder
-│   ├── embedding.py         # Token + position embeddings
-│   └── loss.py              # Cross-entropy loss
-├── parallel/
-│   ├── tensor_parallel.py   # ColumnParallelLinear, RowParallelLinear
-│   ├── pipeline_parallel.py # 1F1B schedule + legacy serial reference
-│   ├── data_parallel.py     # Gradient all-reduce
-│   └── process_groups.py    # TP/PP/DP communicator setup
-└── comm/
-    └── all_reduce.py        # All-reduce primitive (autograd Function)
-```
-
-**Reference implementations** (standalone, not wired into training loop):
-
-```
-├── parallel/
-│   └── distributed_optimizer.py  # ZeRO-1 optimizer state partition
-├── comm/
-│   ├── send_recv.py         # P2P send/recv for PP
-│   ├── sequence_parallel.py # Sequence parallelism primitives
-│   └── overlap_*.py         # Communication-computation overlap
-└── checkpoint.py            # Save/load model weights
-
-**Evaluation** (optional, requires megatron-core):
-
-```
-└── eval/
-    ├── compare_loss.py      # Loss comparison with Megatron baseline
-    └── run_megatron_baseline.py  # Run official Megatron for comparison
-```
-
-## Benchmarks
-
-All tests: 125M model, 4× L20 48GB, 50 steps, B=4, S=512.
-
-### mini-megatron: AMP vs FP32 (50 steps)
-
-```
-                FP32                          BF16 (--amp)
-TP=1 PP=1 |  34,152 tok/s | 23.90% MFU |  38,873 tok/s | 27.20% MFU
-TP=2 PP=1 |  31,048 tok/s | 10.86% MFU |  47,126 tok/s | 16.49% MFU
-TP=2 PP=2 |  31,699 tok/s |  5.62% MFU |  32,191 tok/s |  5.70% MFU
-```
-
-> AMP gives **1.1-1.5x speedup** on compute-bound configs (TP=1, TP=2). PP=2 sees
-> little benefit because communication overhead dominates over compute.
-
-### Fused AdamW optimization (2026-08-11, 50 steps, same conditions)
-
-```
-                BF16 (--amp)                 BF16 + fused (--amp --fused)   gain
-TP=1 PP=1 |  51,700 tok/s | 36.18% MFU |  60,617 tok/s | 42.42% MFU |  +17.2% tok/s
-TP=2 PP=1 |  26,133 tok/s |  9.14% MFU |  28,126 tok/s |  9.84% MFU |   +7.6%
-TP=2 PP=2 |  23,186 tok/s |  4.21% MFU |  23,261 tok/s |  4.22% MFU |   +0.3%
-```
-
-> `--fused` collapses the AdamW step into a single kernel. On a single GPU it
-> cuts optimizer GPU time by ~57% (Nsight Systems: AdamW was 45.2% of kernel
-> time before, 26.3% after) and raises MFU from 36.2% to 42.4%.
-> The gain shrinks with TP/PP because each rank owns fewer parameters, so the
-> optimizer's memory-bandwidth cost no longer dominates.
-> Full story + complete test conditions: `docs/nsight-adamw-optimizer-bottleneck.md`.
-
-### 1F1B pipeline schedule (2026-08-15, 50 steps, same conditions)
-
-The default `--schedule 1f1b` interleaves forward/backward per stage (Megatron's
-non-interleaved 1F1B), shrinking the pipeline bubble from `(pp-1)/pp` (serial
-lockstep) to `(pp-1)/(2m+pp-1)`:
-
-```
-                serial (legacy)             1F1B (--schedule 1f1b)      gain
-TP=2 PP=2 |  16,074 tok/s |  2.80% MFU |  25,236 tok/s |  4.44% MFU |  +57% tok/s
-TP=2 PP=2 |          --           |  35,686 tok/s |  6.14% MFU |  (+BF16, serial 23,650)
-TP=1 PP=4 |  (deadlocks: serial only supports pp=2)  |  45,854 tok/s |  8.00% MFU
-```
-
-> Bubble theory: serial lockstep has each stage idle half the time at pp=2
-> (one micro-batch streams end-to-end per step); 1F1B keeps every stage busy
-> alternating forward/backward, cutting the measured wall time ~1.6x at pp=2.
-> The 1F1B schedule also fixes two latent serial-schedule bugs: it works for
-> any pp >= 2 (serial only implemented stages 0 and pp-1), and every
-> micro-batch gets its backward on every stage (serial skipped the first
-> `pp-rank-1` backwards on stage 0).
-
-### vs Megatron-Core (2026-08-11, historical non-equivalent diagnostic)
-
-> **Withdrawn as a framework-performance claim (2026-08-17).** Although these
-> scripts used the same nominal shape and throughput formula, they did not share
-> converted weights, fixed input batches, or an equivalent forward graph. The
-> values below document the old scripts' total step cost only; they are not a
-> fair mini-megatron vs Megatron-Core comparison. See
-> [the evidence ledger](docs/experiment-results-2026-08-17.md) for the required
-> replacement protocol.
-
-Same day, alternating rounds, BF16, TP=1 PP=1, both frameworks with and without `--fused`:
-
-| Config | mini-megatron | Megatron-Core | mini / Megatron |
-|---|---|---|---|
-| unfused | 51,841 tok/s (36.3% MFU) | 24,661 tok/s (17.3% MFU) | **2.10x** |
-| fused | 60,754 tok/s (42.5% MFU) | 26,641 tok/s (18.6% MFU) | **2.28x** |
-
-> Both scripts used the identical MFU formula and throughput definition
-> (`B × S × steps / elapsed`) and were measured in alternating rounds. Those
-> controls do **not** compensate for the missing model/input/semantic parity, so
-> no speed advantage may be inferred from this table.
->
-> Note on `--compile`: mini-megatron compiles in seconds, but Megatron-Core
-> deadlocks during torch.compile (stuck at 4 compiled kernels, CPU 0%, in two
-> independent runs). So "both fully optimized" is not measurable; mini's
-> fused+compile vs Megatron's default is ~2.73x.
-
-### vs Megatron-Core (2026-07-24, historical)
-
-**FP32:**
-
-| Metric | Megatron-Core TP=1 | mini-megatron TP=1 | mini / Megatron |
-|---|---|---|---|
-| tok/s | 16,479 | **33,967** | **2.06x** |
-| MFU | 11.53% | **23.77%** | **2.06x** |
-| Memory | 4.26 GB | 4.52 GB | 0.94x |
-
-| Metric | Megatron-Core TP=2 | mini-megatron TP=2 | mini / Megatron |
-|---|---|---|---|
-| tok/s | 19,471 | **30,897** | **1.59x** |
-| MFU | 6.81% | **10.81%** | **1.59x** |
-| Memory | 2.32 GB | 3.63 GB | 0.64x |
-
-**BF16 (`--amp`):**
-
-| Metric | Megatron-Core TP=1 | mini-megatron TP=1 |
-|---|---|---|
-| tok/s | 16,391 | **38,873** |
-| MFU | 11.47% | **27.20%** |
-| Memory | 4.26 GB | 3.89 GB |
-
-> Historical numbers (2026-07-24), 30-step comparison table. Absolute values
-> differ from 2026-08-11 runs (different measurement conditions), so only
-> compare within the same table. Note: both absolute throughputs are higher
-> in the 2026-08-11 runs (e.g. Megatron-Core 16.4k -> 24.7k tok/s), likely
-> from environment/version changes.
-
-### Compare against Megatron-LM
-
-```bash
-# Run Megatron-Core baseline (requires megatron-core)
-torchrun --nproc_per_node=1 eval/run_megatron_baseline.py --tp 1 --pp 1
-
-# Compare loss curves
-python eval/compare_loss.py
-```
-
-## Key Design Decisions
-
-- **No HuggingFace dependency** — pure PyTorch. No transformers, no accelerate.
-- **Random data** for benchmarking, no real dataset downloads needed.
-- **1F1B pipeline schedule** — each stage runs `pp-rank-1` warmup forwards,
-  then alternates forward/backward until the drain, so the backward of
-  micro-batch j fills the bubble of forward j+1. Recvs are posted one op early
-  (look-ahead) so transfers overlap the previous op; sends are fire-and-forget.
-  The legacy `--schedule serial` lockstep is kept for comparison.
-- **BF16 mixed precision** via `torch.autocast` (no loss scaling needed; L20 supports BF16 natively).
-- **Gradient accumulation** in PP mode (gradients sum across micro-batches, one
-  optimizer step per sweep). No accumulation in non-PP mode.
-
-## Limitations (What's Not Implemented)
-
-To stay under 800 lines, this repo omits:
-
-- **ZeRO-1 optimizer** (code in `parallel/distributed_optimizer.py`, not wired)
-- **Sequence Parallelism** (code in `comm/sequence_parallel.py`, not wired)
-- **Communication-computation overlap** (code in `comm/overlap_*.py`, not wired)
-- **Activation checkpointing** (interface in `model/recompute.py`, not invoked)
-- **Distributed data loading** (code in `data/dataset.py`, not used; main.py uses
-  inline random data generation)
-- **Interleaved 1F1B** (virtual pipeline stages — 1F1B without interleaving is wired)
-- **CUDA graphs / Flash Attention / fused kernels** (all PyTorch native)
-- **FSDP, MoE, CP, EMA, dynamic loss scaling**
-
-These are all in the "reference implementations" directory for reading, but
-the main training loop uses only the modules marked ✅ above.
-
-## Comparison with Similar Projects
-
-| Project | Stars | Code size | Coverage |
-|---|---|---|---|
-| **mini-megatron** (this) | — | ~800 lines | TP + PP + DP + AMP |
-| [Tiny-Megatron](https://github.com/liangyuwang/Tiny-Megatron) | 32 | ~3K | TP + DP + 2D |
-| [Nano-Megatron](https://github.com/pyy233/Nano-Megatron) | 3 | ~50K | TP+SP+PP+DP+ZeRO+CP (311M TinyStories verified) |
-
-**Choose mini-megatron** if you want to read the entire training loop in one sitting.
-**Choose Tiny-Megatron** if you want a clean 2D parallel API.
-**Choose Nano-Megatron** if you want a production-grade training framework with full
-Megatron coverage.
-
-## Where to Start Reading
-
-1. `main.py` — the entry point. Read `compute_mfu` and the two paths (`if pp > 1` and `else`).
-2. `parallel/tensor_parallel.py` — ColumnParallelLinear, RowParallelLinear.
-3. `parallel/pipeline_parallel.py` — the serial pipeline schedule.
-4. `comm/all_reduce.py` — autograd Function for all-reduce.
-
-Total core implementation: ~800 lines. Reference modules add ~300 more.
-
-## Testing
-
-```bash
-pip install -r requirements.txt
-pytest                # runs all tests in tests/
-```
-
-The test suite runs on CPU (no GPU required) and covers:
-- Model component shapes and loss computation
-- TP/AllReduce correctness (single-process)
-- **End-to-end training**: verifies loss actually decreases on a synthetic task
-  (proves forward + backward + optimizer step are all wired correctly)
-- Gradient flow to all parameters
-- Reference results against 2000-step training on identity task (`results/identity_2000steps.json`)
-
-End-to-end training tests (test_training.py) run on CPU but use CUDA operations
-when available — run them on a CUDA-enabled machine for realistic behavior.
-
-## References
-
-- [Megatron-LM (NVIDIA)](https://github.com/NVIDIA/Megatron-LM) — the real thing
-- [Megatron-LM Paper (1909.08053)](https://arxiv.org/abs/1909.08053) — original TP paper
-- [Efficient Large-Scale Language Model Training on GPU Clusters (2104.04473)](https://arxiv.org/abs/2104.04473) — PP + DP paper
+`serial` 是 legacy 的 PP=2-only 参考路径；请使用 `1f1b` 作为已接入的流水线调度。
+
+## 什么已接入，什么还没有
+
+| 领域 | 状态 |
+| --- | --- |
+| TP | 已接入：Column/Row linear 切分与 autograd all-reduce |
+| PP | 已接入：非交错 1F1B、P2P activation/gradient 回传、PP >= 2 |
+| DP | 已接入：每次 local optimizer step 前的 gradient all-reduce |
+| AMP | 已接入：CUDA 设备上的 BF16 `torch.autocast` |
+| Checkpoint / ZeRO-1 / sequence parallel / overlap helpers | 作为参考模块存在；**未接入** `main.py` 的端到端主链路 |
+| Interleaved 1F1B、activation checkpointing、真实数据管道、MoE、CP/FSDP | 主链路尚未实现 |
+
+这个边界是刻意说明的：文件存在不等于端到端能力已经接入；只有接入并经过测试的能力才会
+标成“已实现”。
+
+## 实验证据与 Nsight Systems 资产
+
+每个受控 bundle 都保存命令、环境、stdout/stderr、metrics、manifest 与 SHA-256
+checksum。两份 clean FP32 profile 的原始证据已版本化：
+
+- `results/runs-clean-ad82d7e/20260818T003611Z-fair-tp1-fp32-clean-profile-mini/`
+- `results/runs-clean-ad82d7e/20260818T003641Z-fair-tp1-fp32-clean-profile-mcore/`
+
+每份都含原始 `.nsys-rep`、SQLite、CSV 导出、analysis JSON 和 checksum。引用前先验证：
+
+~~~bash
+python3 experiments/validate_run_bundle.py \
+  results/runs-clean-ad82d7e/<run-id>
+~~~
+
+请先把原始报告复制到仓库外再用 GUI 打开；profiling 软件可能改写报告元数据。Git 中的
+版本及其 checksum 才是原始证据。
+
+## 仓库地图
+
+~~~text
+main.py                         训练入口与并行拓扑组装
+model/                          GPT 组件与 loss
+parallel/                       TP、PP 1F1B、DP 与 process-group 逻辑
+comm/                           可微 all-reduce 与参考通信模块
+experiments/                    可复现实验、parity gate、汇总、bundle 校验
+tests/                          38 项实现与实验资产检查
+results/                        已提交的 aggregate 与 clean evidence bundle
+docs/architecture.md            数据流与设计决策
+docs/benchmarks.md              当前结论、历史边界与复现方法
+docs/experiment-protocol.md     一项性能结论的发布规则
+~~~
+
+## 测试
+
+~~~bash
+pytest -q
+~~~
+
+完整 clean L20 运行记录为 **38 passed / 11.28s**。测试包含模型/TP/训练检查、
+CPU Gloo 下的 PP=2/4 1F1B 等价性、QKV mapping round-trip、bundle checksum 校验和
+配对结果汇总规则。
+
+## 深入阅读
+
+- [架构与数据流](docs/architecture.md)
+- [Benchmark 与复现](docs/benchmarks.md)
+- [可信实验协议](docs/experiment-protocol.md)
+- [L20 证据 ledger](docs/experiment-results-2026-08-17.md)
+- [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)
 
 ## License
 
