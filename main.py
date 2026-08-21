@@ -15,6 +15,7 @@ from model.loss import CrossEntropyLoss
 from parallel.process_groups import init_model_parallel, set_model_parallel
 from parallel.pipeline_parallel import train_pipeline, train_pipeline_1f1b
 from parallel.data_parallel import allreduce_grads
+from parallel.tensor_parallel import ColumnParallelLinear
 
 
 def make_data_iterator(batch_size, seq_len, vocab_size, preloaded_data=None):
@@ -127,7 +128,9 @@ def main():
         ])
 
         ln_f = nn.LayerNorm(HS).to(device) if pp_rank == pp_size - 1 else None
-        lm_head = nn.Linear(HS, V, bias=False).to(device) if pp_rank == pp_size - 1 else None
+        # Gather only at the vocabulary output so the common CE path sees the
+        # same full logits as MCore's ``parallel_output=False`` configuration.
+        lm_head = ColumnParallelLinear(HS, V, bias=False, gather_output=True).to(device) if pp_rank == pp_size - 1 else None
         loss_fn = CrossEntropyLoss().to(device) if pp_rank == pp_size - 1 else None
 
         all_params = []
@@ -166,7 +169,7 @@ def main():
         decoder = Decoder(HS, NH, FFN, NL).to(device)
         loss_fn = CrossEntropyLoss()
         ln_f = nn.LayerNorm(HS).to(device)
-        lm_head = nn.Linear(HS, V, bias=False).to(device)
+        lm_head = ColumnParallelLinear(HS, V, bias=False, gather_output=True).to(device)
         model = GPT(embedding, decoder, ln_f, lm_head, loss_fn).to(device)
         if args.compile:
             model = torch.compile(model)

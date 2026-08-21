@@ -93,6 +93,69 @@ measured-step capture。它用于描述工作分布，不是吞吐样本。
 optimizer step。分析器将这部分保留为未分类，而不把它强行标成 AdamW。因此 profile
 只能作为与吞吐方向一致的描述性证据，不能证明某个 kernel 就是唯一因果瓶颈。
 
+## TP=2 预备实验与 Nsight 诊断（2026-08-21，dirty tree，不是发布结论）
+
+这是一组为后续多卡 clean campaign 准备的 TP=2 预备实验，不改变上面的单卡 clean
+主结论。它使用同一份 125M shared-contract artifact：FP32、`TP=2, PP=1, DP=1`、
+两张空闲 L20（GPU 0/1）、`B=4`、`S=512`、每个 update 8 个 micro-batch（16,384
+tokens）、30 次 warm-up、200 次 measured update，以及 standard unfused AdamW。
+
+数值等价门槛已先通过；五组 mini/MCore 交替配对的吞吐如下：
+
+| 指标 | mini-megatron | matching MCore path | mini / MCore |
+| --- | ---: | ---: | ---: |
+| 平均吞吐 | 12,220.8 tok/s | 12,390.2 tok/s | **0.986352x** |
+| 相对差异 | - | - | mini 慢约 **1.36%** |
+| 单对范围 | 12,104–12,319 tok/s | 12,351–12,453 tok/s | 0.971975–0.997409x |
+
+这五组配对都显示 mini 未超过 MCore，因此此合同下不能声称 TP=2 更快。每个 measured
+update 的平均差约为 18 ms。源树在采样时为 dirty（`source_tree_clean=false`），因此它
+只能作为**预备统计摘要**；在 runner/workload 提交并清理工作树后，必须按同一合同重跑
+五组配对，才可以升级为发布结论。远端可审计汇总位于：
+
+~~~text
+evidence/fair-125m-parallel-20260821/reports/
+  tp2-pp1-gpu01-preliminary-five-pair-summary.json
+~~~
+
+为解释这 1.36% 的差异，另行执行了两份短 Nsight Systems capture（2 warm-up + 12
+measured update）。它们**不参与吞吐统计**，只用于检查事件结构：
+
+| Trace 指标 | mini | MCore | 可支持的判断 |
+| --- | ---: | ---: | --- |
+| NCCL collective kernel 实例数 | 11,426 | 11,426 | mini 没有更多 collective 调用。 |
+| 全部 CUDA kernel 实例数 | 145,650 | 176,114 | mini 不是因 kernel 数量更多而慢。 |
+| 计时循环内显式 `synchronize` / `barrier` | 无 | 同一 benchmark 外壳 | mini 没有逐 update 强制同步。 |
+| Nsight 下 12-update elapsed | 7.06 s | 16.69 s | capture 严重扰动了 MCore 路径，不能将 trace 的绝对时间用于解释正式的 18 ms/update 差异。 |
+
+特别是，Nsight 导出的累计 NCCL kernel time 在 MCore trace 中为 31.49 s、mini 为
+8.53 s，而 collective 次数相同；这与无 profiler 的正式吞吐方向相反。累计 kernel time
+还跨两个 GPU 相加，并不等于 wall-clock。因此这两份 trace **排除了“mini 多通信、更多
+kernel、逐步显式同步”这三个猜测，却不能证明 mini 慢在 NCCL，也不能给出唯一根因**。
+更细的通信/计算重叠、小 kernel 排布、临时 copy 或框架调度只是待验证假设。
+
+原始 report、SQLite 和 CSV 导出保留在 L20 归档；查看时应复制 `.nsys-rep` 后再用 GUI
+打开，不能修改归档原件：
+
+~~~text
+diagnostics/20260821T1054Z-tp2-nsys-mini/
+  tp2-mini.nsys-rep
+  tp2-mini.sqlite
+  cuda_gpu_kern_sum_cuda_gpu_kern_sum.csv
+  cuda_api_sum_cuda_api_sum.csv
+  cuda_gpu_trace_cuda_gpu_trace.csv
+diagnostics/20260821T1054Z-tp2-nsys-mcore/
+  tp2-mcore.nsys-rep
+  tp2-mcore.sqlite
+  cuda_gpu_kern_sum_cuda_gpu_kern_sum.csv
+  cuda_api_sum_cuda_api_sum.csv
+  cuda_gpu_trace_cuda_gpu_trace.csv
+~~~
+
+若要可靠归因，应在非 profiler 的 200-update 配对 benchmark 中加入低扰动的 CUDA Event
+分段计时（forward、loss/vocab、backward、AdamW），再按五组配对报告每段的均值和差异；
+不能从这两份全量 Nsight trace 的绝对耗时反推正式吞吐根因。
+
 ## mini 内部优化观察（不是跨框架结论）
 
 早期 mini-only BF16 实验对 fused 与 unfused AdamW 做过 5 组交替配对，观测到

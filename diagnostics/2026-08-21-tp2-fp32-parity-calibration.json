@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "kind": "protocol_calibration",
+  "status": "approved_for_preliminary_tp2_runs_only",
+  "scope": "125M shared-contract TP=2 PP=1 DP=1 FP32 one-step numerical gate",
+  "artifact_set": "fair-125m-parallel-20260821/artifacts/tp2-pp1-fp32-v1",
+  "original_thresholds": {
+    "initial_weight_max_abs": 0.0,
+    "max_logits_relative_l2": 0.0005,
+    "max_gradient_relative_l2": 0.0005,
+    "max_parameter_relative_l2_after_one_adamw_step": 0.0001
+  },
+  "three_fixed_batch_calibration": [
+    {"batch_index": 0, "input_sha256": "2e4e71fcf7c4322bd94abd724d9c03f93439ac7837593d54956dd82368226a85", "initial_weight_max_abs": 0.0, "logits_relative_l2": 0.0004258348199073225, "worst_gradient_relative_l2": 0.0004253079532645643, "post_update_parameter_relative_l2": 0.00010139720689039677},
+    {"batch_index": 1, "input_sha256": "51327604cfc5c335e4b6ebe6eccaf99a74fdcd9674741c88fe034ed69a0eb347", "initial_weight_max_abs": 0.0, "logits_relative_l2": 0.0004264558374416083, "worst_gradient_relative_l2": 0.00042747906991280615, "post_update_parameter_relative_l2": 0.00011631498637143523},
+    {"batch_index": 2, "input_sha256": "12e23974606931d8eae612a68bc154bfe6c6dfa38470f4c37f3b59b2abdd409d", "initial_weight_max_abs": 0.0, "logits_relative_l2": 0.00042695170850493014, "worst_gradient_relative_l2": 0.0004273988597560674, "post_update_parameter_relative_l2": 0.00010444649524288252}
+  ],
+  "amended_tp2_thresholds": {
+    "initial_weight_max_abs": 0.0,
+    "max_logits_relative_l2": 0.0005,
+    "max_gradient_relative_l2": 0.0005,
+    "max_parameter_relative_l2_after_one_adamw_step": 0.000125
+  },
+  "rationale": "The initial-weight condition is exact; logits and gradients remain below their existing 5e-4 limits across three immutable batches. The only systematic TP=2 delta is the post-step AdamW accumulation order, whose observed maximum is 1.1631498637143523e-4. The new 1.25e-4 bound is declared before preliminary throughput collection and is not applied retroactively to TP=1.",
+  "publication_boundary": "The calibration and every result derived from it remain preliminary until the implementation is committed and the frozen artifact-backed gate plus five paired runs are repeated from a clean source tree."
+}

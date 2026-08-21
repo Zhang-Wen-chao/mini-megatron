@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "kind": "diagnostic",
+  "status": "resolved",
+  "recorded_at_utc": "2026-08-21T08:48:18+00:00",
+  "scope": "Megatron-Core TP=2 PP=1 FP32 custom-loop smoke test; excluded from benchmark evidence",
+  "command": [
+    "torchrun", "--master_port", "29622", "--nproc_per_node=2",
+    "eval/run_megatron_baseline.py", "--tp", "2", "--pp", "1",
+    "--num-steps", "1", "--warmup-steps", "0", "--micro-batch-size", "1",
+    "--log-interval", "1000", "--no-scaled-init", "--fair-config"
+  ],
+  "environment": {
+    "CUDA_DEVICE_MAX_CONNECTIONS": "1",
+    "NCCL_SHM_DISABLE": "1",
+    "container": "zhangwenchao-megatron",
+    "hardware": "2 x NVIDIA L20"
+  },
+  "observed_failure": {
+    "exception": "ValueError: Expected input batch_size (256) to match target batch_size (512).",
+    "cause": "MCore GPTModel defaults to vocab-parallel output at TP=2. Each rank returned 25,152 vocabulary logits, but the baseline applied ordinary full-vocabulary torch.nn.functional.cross_entropy against the 50,304-vocabulary labels.",
+    "why_it_matters": "The pre-fix baseline cannot support a TP=2 throughput or numerical-equivalence claim; it did not execute a valid loss."
+  },
+  "resolution": {
+    "change": "Set GPTModel(parallel_output=False) in eval/run_megatron_baseline.py so MCore gathers full vocabulary logits before the shared ordinary CE path.",
+    "verification": "The corrected TP=2 PP=1 one-update smoke test completed on 2026-08-21. It is diagnostic only: no shared checkpoint, fixed batch artifact, parity gate, or paired timing was used."
+  },
+  "evidence_policy": "diagnostic_only; never include in paired throughput aggregates or published performance conclusions"
+}

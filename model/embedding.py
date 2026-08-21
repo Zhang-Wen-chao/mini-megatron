@@ -1,10 +1,11 @@
 import torch
 import torch.nn as nn
+from parallel.tensor_parallel import VocabParallelEmbedding
 
 class Embedding(nn.Module):
     def __init__(self, vocab_size, hidden_size, max_seq_len):
         super().__init__()
-        self.token_embedding = nn.Embedding(vocab_size, hidden_size)
+        self.token_embedding = VocabParallelEmbedding(vocab_size, hidden_size)
         self.position_embedding = nn.Embedding(max_seq_len, hidden_size)
 
     def forward(self, input_ids):

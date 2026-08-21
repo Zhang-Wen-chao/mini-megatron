@@ -29,6 +29,7 @@ from model.embedding import Embedding
 from model.loss import CrossEntropyLoss
 from model.transformer import Decoder, GPT
 from parallel.process_groups import set_model_parallel
+from parallel.tensor_parallel import ColumnParallelLinear
 
 
 def _max_abs(left, right):
@@ -63,7 +64,8 @@ def build_mini(device):
     decoder = Decoder(model_config["hidden_size"], model_config["num_attention_heads"],
                       model_config["ffn_hidden_size"], model_config["num_layers"])
     model = GPT(embedding, decoder, torch.nn.LayerNorm(model_config["hidden_size"]),
-                torch.nn.Linear(model_config["hidden_size"], model_config["vocab_size"], bias=False),
+                ColumnParallelLinear(model_config["hidden_size"], model_config["vocab_size"],
+                                     bias=False, gather_output=True),
                 CrossEntropyLoss()).to(device)
     return model, model_config
 

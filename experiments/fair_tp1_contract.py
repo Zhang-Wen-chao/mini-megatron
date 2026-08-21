@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
 import config as cfg
 from model.embedding import Embedding
 from model.transformer import Decoder, GPT
+from parallel.tensor_parallel import ColumnParallelLinear
 
 CONTRACT = (
     "12L-768H-12head-3072FFN, learned absolute position, pre-LN, GELU, "
@@ -33,7 +34,8 @@ def build_mini(device):
     decoder = Decoder(model_config["hidden_size"], model_config["num_attention_heads"],
                       model_config["ffn_hidden_size"], model_config["num_layers"])
     model = GPT(embedding, decoder, torch.nn.LayerNorm(model_config["hidden_size"]),
-                torch.nn.Linear(model_config["hidden_size"], model_config["vocab_size"], bias=False)).to(device)
+                ColumnParallelLinear(model_config["hidden_size"], model_config["vocab_size"],
+                                     bias=False, gather_output=True)).to(device)
     return model, model_config
 
 

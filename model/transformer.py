@@ -16,7 +16,10 @@ class Attention(nn.Module):
         self.head_dim = hidden_size // num_heads
         self.hidden_size_per_partition = hidden_size // tp_size
 
-        self.qkv = ColumnParallelLinear(hidden_size, 3 * hidden_size, bias=False)
+        # Q/K/V are three logical output groups.  Stride-3 sharding keeps all
+        # three groups on every TP rank (an equal head subset per rank), which
+        # is required for local attention and matches Megatron-Core semantics.
+        self.qkv = ColumnParallelLinear(hidden_size, 3 * hidden_size, bias=False, stride=3)
         self.o = RowParallelLinear(hidden_size, hidden_size, bias=False)
 
     def forward(self, x):

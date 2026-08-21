@@ -93,6 +93,59 @@ runner 会执行同样的 preflight；除非显式允许 active-GPU override，�
 一次只运行一条命令。框架对比应交替执行（mini -> megatron -> megatron -> mini），而不能
 一次跑完某一框架的全部样本；每条命令对应自己的 bundle。
 
+## 125M 多卡 campaign：档案结构与发布门槛
+
+125M 扩展实验只覆盖 `TP=2,PP=1,DP=1`、`TP=1,PP=2,DP=1` 与
+`TP=2,PP=2,DP=1`；已有 `TP=1,PP=1,DP=1` 是单卡锚点。不要把这套结果泛化成
+更大模型或所有 Megatron 配置。每个新增拓扑都使用同一份预先冻结的协议：FP32、
+`B=4`、`S=512`、每个 optimizer update 8 个 micro-batch（16,384 tokens）、30 个 warm-up
+update 与 200 个 measured update。这样既让 PP 的 1F1B 具有足够 micro-batch，又让三个
+多卡拓扑的 tokens/update 完全相同。
+
+L20 上为一次 campaign 创建**只追加**的归档目录，例如：
+
+~~~text
+/mnt/storage01/zhangwenchao02/repos/mini-megatron-test/evidence/
+  fair-125m-parallel-20260821/
+  ├── campaign.json                 # 一次写入：合同、门槛、固定执行顺序
+  ├── artifacts/                    # full source weights、mini/MCore shards、固定 batches、manifest
+  ├── parity/                       # 每个拓扑的 logits/grad/one-step update report
+  ├── benchmarks/                   # 10 个 immutable run bundle/topology（5 对）
+  ├── profiles/                     # 单独的 Nsight bundle；绝不参与吞吐统计
+  ├── reports/                      # paired aggregate、可发布结论与范围
+  └── ledger/                       # 每份证据的路径、大小与 SHA-256，只追加
+~~~
+
+初始化命令会把模型合同、阈值、拓扑矩阵、`mini,mcore,mcore,mini,...` 的 10 次固定
+执行顺序写入 `campaign.json`。之后只用 `record` 追加一份证据的地址和 SHA-256；不能
+原地覆盖旧报告。
+
+~~~bash
+python3 experiments/fair_parallel_campaign.py init \
+  --campaign-id fair-125m-parallel-20260821 \
+  --campaign-dir /mnt/storage01/zhangwenchao02/repos/mini-megatron-test/evidence/fair-125m-parallel-20260821
+
+python3 experiments/fair_parallel_campaign.py record \
+  --campaign-dir /mnt/storage01/zhangwenchao02/repos/mini-megatron-test/evidence/fair-125m-parallel-20260821 \
+  --kind numerical_parity --topology tp2-pp1-dp1 \
+  --source /mnt/storage01/.../parity/tp2-pp1-dp1/report.json
+
+python3 experiments/fair_parallel_campaign.py validate \
+  --campaign-dir /mnt/storage01/zhangwenchao02/repos/mini-megatron-test/evidence/fair-125m-parallel-20260821
+~~~
+
+校验器会验证每一条登记的 SHA-256，并列出每个拓扑是否缺少 `artifact`、
+`numerical_parity`、`benchmark_summary` 或 `profile`。只有四类都已登记且底层 bundle
+自身通过 `validate_run_bundle.py` 时，才可以把这个拓扑写入结果文档。仓库提交的是
+campaign 配置、ledger 副本、aggregate、命令、环境快照、校验和和可移植 CSV；L20
+归档保留权重 shard、输入、全部 bundle 以及 `.nsys-rep/.sqlite` 原件。Git 中的原始 profile
+只能从未打开的副本提交；GUI 查看必须复制到仓库外，避免修改报告元数据。
+
+失败也必须保留，但不得混入结论：为每一次 smoke、接口错误或被替换的方案保存
+`diagnostics/<timestamp>-<topic>.json`（命令、stdout/stderr、触发条件、根因、后续修复
+commit），并用 `record --kind diagnostic` 登记 SHA-256。`diagnostic` 永远不会满足上面的
+发布门槛。这样项目能保留真实踩坑经验，同时不会把失败的临时实现伪装成公平实验资产。
+
 source_tree_clean=false（通过 --allow-dirty 创建）的 bundle 仅是临时证据。先提交 runner 与
 workload，再在 clean tree 上重跑配对实验，才可以更新 README 或 release 中的主结论。
 

@@ -6,6 +6,7 @@ import torch
 import config as cfg
 from model.embedding import Embedding
 from model.transformer import Attention, MLP, DecoderLayer, Decoder, GPT
+from parallel.tensor_parallel import ColumnParallelLinear
 from model.loss import CrossEntropyLoss
 
 
@@ -68,7 +69,7 @@ def test_gpt_forward_with_and_without_loss():
     embed = Embedding(V, HS, max_seq_len=8)
     decoder = Decoder(HS, NH, FFN, NL)
     ln_f = torch.nn.LayerNorm(HS)
-    lm_head = torch.nn.Linear(HS, V, bias=False)
+    lm_head = ColumnParallelLinear(HS, V, bias=False, gather_output=True)
     loss_fn = CrossEntropyLoss()
     model = GPT(embed, decoder, ln_f, lm_head, loss_fn)
 

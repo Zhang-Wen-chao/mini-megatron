@@ -22,7 +22,13 @@ def init_distributed(tp, pp):
     world_size = int(os.environ["WORLD_SIZE"])
     local_rank = int(os.environ["LOCAL_RANK"])
     torch.cuda.set_device(local_rank)
-    dist.init_process_group(backend="nccl", rank=rank, world_size=world_size)
+    # Bind the NCCL process group to this rank's CUDA device explicitly.  This
+    # avoids NCCL inferring the device from a later collective, which otherwise
+    # produces an ambiguous-device warning in multi-GPU benchmark runs.
+    dist.init_process_group(
+        backend="nccl", rank=rank, world_size=world_size,
+        device_id=torch.device("cuda", local_rank),
+    )
     parallel_state.initialize_model_parallel(
         tensor_model_parallel_size=tp, pipeline_model_parallel_size=pp,
     )
@@ -68,6 +74,10 @@ def build_model(tp, pp, use_bf16=False, no_scaled_init=False, fair_config=False)
         max_sequence_length=MODEL_CONFIG["max_seq_len"],
         pre_process=(pp_rank == 0),
         post_process=(pp_rank == pp_size - 1),
+        # The custom-loop counterpart calculates ordinary full-vocabulary CE.
+        # Gather MCore's vocab-parallel output before that shared loss rather
+        # than accidentally treating each TP shard as a full vocabulary.
+        parallel_output=False,
         position_embedding_type="learned_absolute",
     )
     return model, config
